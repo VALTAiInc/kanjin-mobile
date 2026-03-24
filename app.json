@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Kanjin",
+    "slug": "kanjin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0F"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.valt.kanjin",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Kanjin needs microphone access to record your voice for translation."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0A0A0F"
+      },
+      "package": "com.valt.kanjin",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Kanjin needs microphone access to record your voice for translation."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "aad3336d-c715-47d2-a71d-a30c6f3d06ae"
+      }
+    },
+    "owner": "thevalt"
+  }
+}
