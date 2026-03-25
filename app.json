@@ -16,7 +16,8 @@
       "bundleIdentifier": "com.valt.kanjin",
       "buildNumber": "2",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Kanjin needs microphone access to record your voice for translation."
+        "NSMicrophoneUsageDescription": "Kanjin needs microphone access to record your voice for translation.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -24,7 +25,11 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0A0A0F"
       },
-      "package": "com.valt.kanjin"
+      "package": "com.valt.kanjin",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       [
@@ -32,7 +37,8 @@
         {
           "microphonePermission": "Kanjin needs microphone access to record your voice for translation."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {

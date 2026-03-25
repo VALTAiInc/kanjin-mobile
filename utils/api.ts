@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { ANTHROPIC_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_MODEL, VOICE_IDS, LANG_NAMES } from "../constants/config";
 
 export async function translateText(text: string, sourceLang: string, targetLang: string): Promise<string> {

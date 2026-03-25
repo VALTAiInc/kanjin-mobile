@@ -1,14 +1,15 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useContext, useMemo, createContext } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   ActivityIndicator, Modal, FlatList, TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Audio } from "expo-av";
 import * as Sharing from "expo-sharing";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
 import { translateText, synthesizeText } from "../utils/api";
 
@@ -16,16 +17,39 @@ interface VoiceSettings { speed: number; stability: number; style: number; }
 interface BatchLine { id: string; text: string; }
 interface BatchResult { id: string; status: "ok" | "error" | "pending"; error?: string; }
 
+type ThemeColors = {
+  bg: string; surface: string; surface2: string; border: string;
+  orange: string; orangeDim: string; text: string; textMuted: string; textDim: string;
+  teal: string; red: string;
+};
+
+const DARK: ThemeColors = {
+  bg: "#0A0A0F", surface: "#12121A", surface2: "#1A1A26",
+  border: "rgba(255,255,255,0.08)", orange: "#E8761A", orangeDim: "rgba(232,118,26,0.15)",
+  text: "#FFFFFF", textMuted: "rgba(255,255,255,0.45)", textDim: "rgba(255,255,255,0.18)",
+  teal: "#4ECDC4", red: "#FF6B6B",
+};
+
+const LIGHT: ThemeColors = {
+  bg: "#F5F5F5", surface: "#FFFFFF", surface2: "#E8E8E8",
+  border: "rgba(0,0,0,0.10)", orange: "#E8761A", orangeDim: "rgba(232,118,26,0.10)",
+  text: "#1A1A1A", textMuted: "rgba(0,0,0,0.45)", textDim: "rgba(0,0,0,0.22)",
+  teal: "#2BA89E", red: "#D94444",
+};
+
+const ThemeCtx = createContext<{ c: ThemeColors; isDark: boolean }>({ c: DARK, isDark: true });
+
 function LangPickerModal({ visible, selected, onSelect, onClose }: {
   visible: boolean; selected: string; onSelect: (c: string) => void; onClose: () => void;
 }) {
+  const { c } = useContext(ThemeCtx);
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Select Language</Text>
-          <Pressable onPress={onClose} style={styles.modalClose}>
-            <Text style={styles.modalCloseText}>Done</Text>
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: c.border }}>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: c.text }}>Select Language</Text>
+          <Pressable onPress={onClose} style={{ backgroundColor: c.orange, paddingHorizontal: 16, paddingVertical: 7, borderRadius: 16 }}>
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Done</Text>
           </Pressable>
         </View>
         <FlatList
@@ -33,14 +57,14 @@ function LangPickerModal({ visible, selected, onSelect, onClose }: {
           keyExtractor={(item) => item.code}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={[styles.langItem, item.code === selected && styles.langItemActive]}
+              style={[{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border }, item.code === selected && { backgroundColor: c.orangeDim }]}
               onPress={() => { onSelect(item.code); onClose(); }}
             >
-              <Text style={styles.langFlag}>{item.flag}</Text>
-              <Text style={[styles.langItemText, item.code === selected && styles.langItemTextActive]}>
+              <Text style={{ fontSize: 20 }}>{item.flag}</Text>
+              <Text style={[{ flex: 1, fontSize: 15, fontWeight: "500", color: c.textMuted }, item.code === selected && { color: c.orange, fontWeight: "700" }]}>
                 {item.label}
               </Text>
-              {item.code === selected && <Ionicons name="checkmark" size={18} color={COLORS.orange} />}
+              {item.code === selected && <Ionicons name="checkmark" size={18} color={c.orange} />}
             </TouchableOpacity>
           )}
         />
@@ -50,12 +74,13 @@ function LangPickerModal({ visible, selected, onSelect, onClose }: {
 }
 
 function LangButton({ code, onPress }: { code: string; onPress: () => void }) {
+  const { c } = useContext(ThemeCtx);
   const lang = LANGUAGES.find(l => l.code === code) ?? LANGUAGES[0];
   return (
-    <Pressable style={styles.langButton} onPress={onPress}>
-      <Text style={styles.langFlag}>{lang.flag}</Text>
-      <Text style={styles.langButtonText}>{lang.label}</Text>
-      <Ionicons name="chevron-down" size={14} color={COLORS.textMuted} />
+    <Pressable style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }} onPress={onPress}>
+      <Text style={{ fontSize: 18 }}>{lang.flag}</Text>
+      <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: c.text }}>{lang.label}</Text>
+      <Ionicons name="chevron-down" size={14} color={c.textMuted} />
     </Pressable>
   );
 }
@@ -64,43 +89,98 @@ function SliderRow({ label, value, min, max, step, hint, onChange, onReset }: {
   label: string; value: number; min: number; max: number; step: number;
   hint: string; onChange: (v: number) => void; onReset: () => void;
 }) {
+  const { c } = useContext(ThemeCtx);
   const steps = Math.round((max - min) / step);
   const currentStep = Math.round((value - min) / step);
   return (
-    <View style={styles.sliderRow}>
-      <View style={styles.sliderTop}>
-        <Text style={styles.sliderLabel}>{label}</Text>
-        <View style={styles.sliderRight}>
-          <Text style={styles.sliderValue}>{value.toFixed(2)}</Text>
-          <Pressable onPress={onReset} style={styles.resetBtn}>
-            <Text style={styles.resetBtnText}>reset</Text>
+    <View style={{ gap: 3 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: c.text }}>{label}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={{ fontSize: 11, fontWeight: "700", color: c.orange, minWidth: 32, textAlign: "right" }}>{value.toFixed(2)}</Text>
+          <Pressable onPress={onReset} style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: c.border }}>
+            <Text style={{ fontSize: 10, color: c.textDim }}>reset</Text>
           </Pressable>
         </View>
       </View>
-      <View style={styles.sliderTrack}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 22 }}>
         {Array.from({ length: steps + 1 }).map((_, i) => (
           <Pressable key={i}
             onPress={() => onChange(Math.round((min + i * step) * 100) / 100)}
-            style={[styles.sliderDot, i === currentStep && styles.sliderDotActive]}
+            style={i === currentStep
+              ? { width: 14, height: 14, borderRadius: 7, backgroundColor: c.orange, borderWidth: 1, borderColor: c.orange }
+              : { width: 9, height: 9, borderRadius: 5, backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border }
+            }
           />
         ))}
       </View>
-      <Text style={styles.sliderHint}>{hint}</Text>
+      <Text style={{ fontSize: 10, color: c.textDim }}>{hint}</Text>
     </View>
   );
 }
 
 function StatusPill({ msg, type }: { msg: string; type: "idle"|"active"|"success"|"error" }) {
-  const colors = { idle: COLORS.textMuted, active: COLORS.orange, success: COLORS.teal, error: COLORS.red };
+  const { c } = useContext(ThemeCtx);
+  const typeColors = { idle: c.textMuted, active: c.orange, success: c.teal, error: c.red };
   return (
-    <View style={[styles.statusPill, { borderColor: type === "idle" ? COLORS.border : colors[type] + "66" }]}>
-      {type === "active" && <ActivityIndicator size="small" color={COLORS.orange} style={{ marginRight: 8 }} />}
-      <Text style={[styles.statusText, { color: colors[type] }]}>{msg}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", padding: 9, backgroundColor: c.surface, borderRadius: 8, borderWidth: 1, borderColor: type === "idle" ? c.border : typeColors[type] + "66" }}>
+      {type === "active" && <ActivityIndicator size="small" color={c.orange} style={{ marginRight: 8 }} />}
+      <Text style={{ fontSize: 12, flex: 1, color: typeColors[type] }}>{msg}</Text>
     </View>
   );
 }
 
-export default function HomeScreen() {
+function SplashScreen({ onStart }: { onStart: () => void }) {
+  return (
+    <View style={splashStyles.container}>
+      <View style={splashStyles.content}>
+        <LinearGradient
+          colors={["#3A2010", "#1A0D05", "#0A0A0F"]}
+          style={splashStyles.iconBox}
+        >
+          <Text style={splashStyles.kanji}>声</Text>
+        </LinearGradient>
+
+        <Text style={splashStyles.title}>
+          BRIDGE <Text style={splashStyles.titleBy}>by VALT</Text>
+        </Text>
+
+        <Text style={splashStyles.tagline}>Every conversation, every language.</Text>
+      </View>
+
+      <View style={splashStyles.bottom}>
+        <Pressable style={splashStyles.startBtn} onPress={onStart}>
+          <Text style={splashStyles.startBtnText}>START TRANSLATING</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const splashStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#0A0A0F", justifyContent: "space-between", alignItems: "center", paddingVertical: 60, paddingHorizontal: 24 },
+  content: { flex: 1, justifyContent: "center", alignItems: "center", gap: 20 },
+  iconBox: { width: 120, height: 120, borderRadius: 28, alignItems: "center", justifyContent: "center" },
+  kanji: { fontSize: 60, color: "#FFFFFF", fontWeight: "300" },
+  title: { fontSize: 28, fontWeight: "800", color: "#FFFFFF", letterSpacing: 1.5 },
+  titleBy: { color: "#FE7725", fontWeight: "800" },
+  tagline: { fontSize: 15, color: "rgba(255,255,255,0.45)", fontStyle: "italic" },
+  bottom: { width: "100%" },
+  startBtn: { backgroundColor: "#FE7725", borderRadius: 14, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
+  startBtnText: { fontSize: 16, fontWeight: "800", color: "#FFFFFF", letterSpacing: 1.2 },
+});
+
+export default function AppEntry() {
+  const [started, setStarted] = useState(false);
+  if (!started) return <SplashScreen onStart={() => setStarted(true)} />;
+  return <HomeScreen />;
+}
+
+function HomeScreen() {
+  const [isDark, setIsDark] = useState(true);
+  const c = isDark ? DARK : LIGHT;
+  const theme = useMemo(() => ({ c, isDark }), [isDark]);
+
   const [activeTab, setActiveTab] = useState<"single"|"batch">("single");
 
   const [singleMode, setSingleMode] = useState<"translate"|"speak">("translate");
@@ -216,59 +296,68 @@ export default function HomeScreen() {
   const lineCount = parseLines(batchText).length;
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.header}>
-        <Text style={styles.headerAppName}>Kanjin</Text>
-        <Text style={styles.poweredBy}>powered by</Text>
-        <Text style={styles.valtText}>VALT AI Inc.</Text>
+    <ThemeCtx.Provider value={theme}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top"]}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
+        <View style={{ flex: 1 }} />
+        <View style={{ alignItems: "center" }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: c.text }}>Kanjin</Text>
+          <Text style={{ fontSize: 10, fontWeight: "500", color: c.text, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 1 }}>powered by</Text>
+          <Text style={{ fontSize: 16, fontWeight: "800", color: c.orange, letterSpacing: 1 }}>VALT AI Inc.</Text>
+        </View>
+        <View style={{ flex: 1, alignItems: "flex-end", paddingRight: 16 }}>
+          <Pressable onPress={() => setIsDark(d => !d)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name={isDark ? "sunny" : "moon"} size={16} color={isDark ? "#FFC857" : "#5A5A8A"} />
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.tabBar}>
-        <Pressable style={[styles.tabBtn, activeTab === "single" && styles.tabBtnActive]} onPress={() => setActiveTab("single")}>
-          <Ionicons name="mic" size={14} color={activeTab === "single" ? "#fff" : COLORS.textMuted} />
-          <Text style={[styles.tabBtnText, activeTab === "single" && styles.tabBtnTextActive]}>Single Line</Text>
+      <View style={{ flexDirection: "row", marginHorizontal: 14, marginVertical: 10, backgroundColor: c.surface, borderRadius: 10, padding: 3, gap: 3, borderWidth: 1, borderColor: c.border }}>
+        <Pressable style={[{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 8, borderRadius: 8 }, activeTab === "single" && { backgroundColor: c.orange }]} onPress={() => setActiveTab("single")}>
+          <Ionicons name="mic" size={14} color={activeTab === "single" ? "#fff" : c.textMuted} />
+          <Text style={[{ fontSize: 12, fontWeight: "600", color: c.textMuted }, activeTab === "single" && { color: "#fff" }]}>Single Line</Text>
         </Pressable>
-        <Pressable style={[styles.tabBtn, activeTab === "batch" && styles.tabBtnActive]} onPress={() => setActiveTab("batch")}>
-          <Ionicons name="albums" size={14} color={activeTab === "batch" ? "#fff" : COLORS.textMuted} />
-          <Text style={[styles.tabBtnText, activeTab === "batch" && styles.tabBtnTextActive]}>Batch Export</Text>
+        <Pressable style={[{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 8, borderRadius: 8 }, activeTab === "batch" && { backgroundColor: c.orange }]} onPress={() => setActiveTab("batch")}>
+          <Ionicons name="albums" size={14} color={activeTab === "batch" ? "#fff" : c.textMuted} />
+          <Text style={[{ fontSize: 12, fontWeight: "600", color: c.textMuted }, activeTab === "batch" && { color: "#fff" }]}>Batch Export</Text>
         </Pressable>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         {activeTab === "single" && (
-          <View style={styles.section}>
-            <View style={styles.modeRow}>
-              <Pressable style={[styles.modeBtn, singleMode === "translate" && styles.modeBtnActive]} onPress={() => setSingleMode("translate")}>
-                <Text style={[styles.modeBtnText, singleMode === "translate" && styles.modeBtnTextActive]}>🌐 Translate</Text>
+          <View style={{ paddingHorizontal: 14, gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
+              <Pressable style={[{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: "center" }, singleMode === "translate" && { backgroundColor: c.orangeDim, borderColor: c.orange }]} onPress={() => setSingleMode("translate")}>
+                <Text style={[{ fontSize: 13, fontWeight: "600", color: c.textMuted }, singleMode === "translate" && { color: c.orange }]}>🌐 Translate</Text>
               </Pressable>
-              <Pressable style={[styles.modeBtn, singleMode === "speak" && styles.modeBtnActive]} onPress={() => setSingleMode("speak")}>
-                <Text style={[styles.modeBtnText, singleMode === "speak" && styles.modeBtnTextActive]}>🎙 Speak as-is</Text>
+              <Pressable style={[{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: "center" }, singleMode === "speak" && { backgroundColor: c.orangeDim, borderColor: c.orange }]} onPress={() => setSingleMode("speak")}>
+                <Text style={[{ fontSize: 13, fontWeight: "600", color: c.textMuted }, singleMode === "speak" && { color: c.orange }]}>🎙 Speak as-is</Text>
               </Pressable>
             </View>
 
             {singleMode === "translate" ? (
-              <View style={styles.langPair}>
-                <View style={styles.langGroup}>
-                  <Text style={styles.langGroupLabel}>FROM</Text>
+              <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>FROM</Text>
                   <LangButton code={sourceLang} onPress={() => setShowSourcePicker(true)} />
                 </View>
-                <Pressable style={styles.swapBtn} onPress={() => { const t = sourceLang; setSourceLang(targetLang); setTargetLang(t); }}>
-                  <Text style={styles.swapBtnText}>⇄</Text>
+                <Pressable style={{ width: 34, height: 34, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 1 }} onPress={() => { const t = sourceLang; setSourceLang(targetLang); setTargetLang(t); }}>
+                  <Text style={{ fontSize: 16, color: c.textMuted }}>⇄</Text>
                 </Pressable>
-                <View style={styles.langGroup}>
-                  <Text style={styles.langGroupLabel}>TO</Text>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>TO</Text>
                   <LangButton code={targetLang} onPress={() => setShowTargetPicker(true)} />
                 </View>
               </View>
             ) : (
               <View>
-                <Text style={styles.sectionLabel}>VOICE LANGUAGE</Text>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE LANGUAGE</Text>
                 <LangButton code={speakLang} onPress={() => setShowSpeakPicker(true)} />
               </View>
             )}
 
-            <View style={styles.voiceBox}>
-              <Text style={styles.sectionLabel}>VOICE CONTROLS</Text>
+            <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 8 }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE CONTROLS</Text>
               <SliderRow label="Speed" value={singleVoice.speed} min={0.7} max={1.2} step={0.1} hint="0.7 = slow · 1.0 = normal · 1.2 = fast"
                 onChange={v => setSingleVoice(p => ({ ...p, speed: v }))} onReset={() => setSingleVoice(p => ({ ...p, speed: 1.0 }))} />
               <SliderRow label="Stability" value={singleVoice.stability} min={0} max={1} step={0.25} hint="Low = expressive · High = consistent"
@@ -277,34 +366,34 @@ export default function HomeScreen() {
                 onChange={v => setSingleVoice(p => ({ ...p, style: v }))} onReset={() => setSingleVoice(p => ({ ...p, style: 0.2 }))} />
             </View>
 
-            <Text style={styles.sectionLabel}>{singleMode === "translate" ? "TEXT TO TRANSLATE" : "TEXT TO SPEAK"}</Text>
-            <TextInput style={styles.textInput} multiline value={singleText} onChangeText={setSingleText}
-              placeholder="Type or paste text here..." placeholderTextColor={COLORS.textDim} maxLength={5000} />
-            <Text style={styles.charCount}>{singleText.length} / 5000</Text>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>{singleMode === "translate" ? "TEXT TO TRANSLATE" : "TEXT TO SPEAK"}</Text>
+            <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 85, textAlignVertical: "top" }} multiline value={singleText} onChangeText={setSingleText}
+              placeholder="Type or paste text here..." placeholderTextColor={c.textDim} maxLength={5000} />
+            <Text style={{ textAlign: "right", fontSize: 10, color: c.textDim, marginTop: -6 }}>{singleText.length} / 5000</Text>
 
-            <Pressable style={styles.primaryBtn} onPress={runSingle}>
+            <Pressable style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.orange, borderRadius: 10, paddingVertical: 12 }} onPress={runSingle}>
               <Ionicons name="flash" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>{singleMode === "translate" ? "Translate + Generate Audio" : "Generate Audio"}</Text>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>{singleMode === "translate" ? "Translate + Generate Audio" : "Generate Audio"}</Text>
             </Pressable>
 
             <StatusPill msg={singleStatus.msg} type={singleStatus.type} />
 
             {singleTranslation !== "" && singleMode === "translate" && (
-              <View style={styles.resultBox}>
-                <Text style={styles.sectionLabel}>TRANSLATION</Text>
-                <Text style={styles.resultText} selectable>{singleTranslation}</Text>
+              <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATION</Text>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: c.text, lineHeight: 22 }} selectable>{singleTranslation}</Text>
               </View>
             )}
 
             {singleAudioUri && (
-              <View style={styles.audioRow}>
-                <Pressable style={styles.playBtn} onPress={() => playAudio(singleAudioUri)}>
-                  <Ionicons name="play" size={20} color="#fff" />
-                  <Text style={styles.playBtnText}>Play</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.surface, borderRadius: 8, borderWidth: 1, borderColor: c.border, paddingVertical: 10 }} onPress={() => playAudio(singleAudioUri)}>
+                  <Ionicons name="play" size={20} color={c.text} />
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: c.text }}>Play</Text>
                 </Pressable>
-                <Pressable style={styles.shareBtn} onPress={shareSingleAudio}>
-                  <Ionicons name="share-outline" size={20} color={COLORS.orange} />
-                  <Text style={styles.shareBtnText}>Share MP3</Text>
+                <Pressable style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.orangeDim, borderRadius: 8, borderWidth: 1, borderColor: c.orange, paddingVertical: 10 }} onPress={shareSingleAudio}>
+                  <Ionicons name="share-outline" size={20} color={c.orange} />
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: c.orange }}>Share MP3</Text>
                 </Pressable>
               </View>
             )}
@@ -312,39 +401,39 @@ export default function HomeScreen() {
         )}
 
         {activeTab === "batch" && (
-          <View style={styles.section}>
-            <View style={styles.modeRow}>
-              <Pressable style={[styles.modeBtn, batchMode === "translate" && styles.modeBtnActive]} onPress={() => setBatchMode("translate")}>
-                <Text style={[styles.modeBtnText, batchMode === "translate" && styles.modeBtnTextActive]}>🌐 Translate</Text>
+          <View style={{ paddingHorizontal: 14, gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
+              <Pressable style={[{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: "center" }, batchMode === "translate" && { backgroundColor: c.orangeDim, borderColor: c.orange }]} onPress={() => setBatchMode("translate")}>
+                <Text style={[{ fontSize: 13, fontWeight: "600", color: c.textMuted }, batchMode === "translate" && { color: c.orange }]}>🌐 Translate</Text>
               </Pressable>
-              <Pressable style={[styles.modeBtn, batchMode === "speak" && styles.modeBtnActive]} onPress={() => setBatchMode("speak")}>
-                <Text style={[styles.modeBtnText, batchMode === "speak" && styles.modeBtnTextActive]}>🎙 Speak as-is</Text>
+              <Pressable style={[{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: "center" }, batchMode === "speak" && { backgroundColor: c.orangeDim, borderColor: c.orange }]} onPress={() => setBatchMode("speak")}>
+                <Text style={[{ fontSize: 13, fontWeight: "600", color: c.textMuted }, batchMode === "speak" && { color: c.orange }]}>🎙 Speak as-is</Text>
               </Pressable>
             </View>
 
             {batchMode === "translate" ? (
-              <View style={styles.langPair}>
-                <View style={styles.langGroup}>
-                  <Text style={styles.langGroupLabel}>FROM</Text>
+              <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>FROM</Text>
                   <LangButton code={batchSourceLang} onPress={() => setShowBatchSourcePicker(true)} />
                 </View>
-                <Pressable style={styles.swapBtn} onPress={() => { const t = batchSourceLang; setBatchSourceLang(batchTargetLang); setBatchTargetLang(t); }}>
-                  <Text style={styles.swapBtnText}>⇄</Text>
+                <Pressable style={{ width: 34, height: 34, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 1 }} onPress={() => { const t = batchSourceLang; setBatchSourceLang(batchTargetLang); setBatchTargetLang(t); }}>
+                  <Text style={{ fontSize: 16, color: c.textMuted }}>⇄</Text>
                 </Pressable>
-                <View style={styles.langGroup}>
-                  <Text style={styles.langGroupLabel}>TO</Text>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>TO</Text>
                   <LangButton code={batchTargetLang} onPress={() => setShowBatchTargetPicker(true)} />
                 </View>
               </View>
             ) : (
               <View>
-                <Text style={styles.sectionLabel}>VOICE LANGUAGE</Text>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE LANGUAGE</Text>
                 <LangButton code={batchSpeakLang} onPress={() => setShowBatchSpeakPicker(true)} />
               </View>
             )}
 
-            <View style={styles.voiceBox}>
-              <Text style={styles.sectionLabel}>VOICE CONTROLS</Text>
+            <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 8 }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE CONTROLS</Text>
               <SliderRow label="Speed" value={batchVoice.speed} min={0.7} max={1.2} step={0.1} hint="0.7 = slow · 1.0 = normal · 1.2 = fast"
                 onChange={v => setBatchVoice(p => ({ ...p, speed: v }))} onReset={() => setBatchVoice(p => ({ ...p, speed: 1.0 }))} />
               <SliderRow label="Stability" value={batchVoice.stability} min={0} max={1} step={0.25} hint="Low = expressive · High = consistent"
@@ -353,28 +442,28 @@ export default function HomeScreen() {
                 onChange={v => setBatchVoice(p => ({ ...p, style: v }))} onReset={() => setBatchVoice(p => ({ ...p, style: 0.2 }))} />
             </View>
 
-            <Text style={styles.sectionLabel}>NUMBERED SCRIPT</Text>
-            <TextInput style={[styles.textInput, { minHeight: 160 }]} multiline value={batchText} onChangeText={setBatchText}
+            <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>NUMBERED SCRIPT</Text>
+            <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 160, textAlignVertical: "top" }} multiline value={batchText} onChangeText={setBatchText}
               placeholder={"Paste your numbered script here, e.g:\n1-1: Welcome to the JLPT N5 Kanji Accelerator.\n1-2: In this video..."}
-              placeholderTextColor={COLORS.textDim} />
-            <Text style={styles.charCount}>{lineCount} lines detected</Text>
+              placeholderTextColor={c.textDim} />
+            <Text style={{ textAlign: "right", fontSize: 10, color: c.textDim, marginTop: -6 }}>{lineCount} lines detected</Text>
 
-            <Pressable style={[styles.primaryBtn, batchRunning && styles.primaryBtnDisabled]} onPress={runBatch} disabled={batchRunning}>
+            <Pressable style={[{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.orange, borderRadius: 10, paddingVertical: 12 }, batchRunning && { opacity: 0.4 }]} onPress={runBatch} disabled={batchRunning}>
               <Ionicons name="albums" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>Generate All MP3 Files</Text>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>Generate All MP3 Files</Text>
             </Pressable>
 
             <StatusPill msg={batchStatus.msg} type={batchStatus.type} />
 
             {batchResults.length > 0 && (
-              <View style={styles.progressBox}>
+              <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, overflow: "hidden" }}>
                 {batchResults.map(r => (
-                  <View key={r.id} style={styles.progressItem}>
-                    <Text style={styles.progressId}>{r.id}</Text>
-                    <Text style={[styles.progressStatus,
-                      r.status === "ok" && { color: COLORS.teal },
-                      r.status === "error" && { color: COLORS.red },
-                      r.status === "pending" && { color: COLORS.textDim },
+                  <View key={r.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border }}>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: c.text }}>{r.id}</Text>
+                    <Text style={[{ fontSize: 12, fontWeight: "600" },
+                      r.status === "ok" && { color: c.teal },
+                      r.status === "error" && { color: c.red },
+                      r.status === "pending" && { color: c.textDim },
                     ]}>
                       {r.status === "ok" ? "✓ Done" : r.status === "error" ? "✗ Error" : "Waiting"}
                     </Text>
@@ -393,74 +482,6 @@ export default function HomeScreen() {
       <LangPickerModal visible={showBatchTargetPicker} selected={batchTargetLang} onSelect={setBatchTargetLang} onClose={() => setShowBatchTargetPicker(false)} />
       <LangPickerModal visible={showBatchSpeakPicker} selected={batchSpeakLang} onSelect={setBatchSpeakLang} onClose={() => setShowBatchSpeakPicker(false)} />
     </SafeAreaView>
+    </ThemeCtx.Provider>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.bg },
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
-  section: { paddingHorizontal: 20, gap: 14 },
-  header: { alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  headerAppName: { fontSize: 15, fontWeight: "700", color: COLORS.text },
-  poweredBy: { fontSize: 10, fontWeight: "500", color: "#fff", textTransform: "uppercase", letterSpacing: 1.5, marginTop: 2 },
-  valtText: { fontSize: 16, fontWeight: "800", color: COLORS.orange, letterSpacing: 1 },
-  tabBar: { flexDirection: "row", margin: 16, backgroundColor: COLORS.surface, borderRadius: 12, padding: 4, gap: 4, borderWidth: 1, borderColor: COLORS.border },
-  tabBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 9 },
-  tabBtnActive: { backgroundColor: COLORS.orange },
-  tabBtnText: { fontSize: 12, fontWeight: "600", color: COLORS.textMuted },
-  tabBtnTextActive: { color: "#fff" },
-  modeRow: { flexDirection: "row", gap: 8, marginTop: 4 },
-  modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 9, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, alignItems: "center" },
-  modeBtnActive: { backgroundColor: "rgba(232,118,26,0.15)", borderColor: COLORS.orange },
-  modeBtnText: { fontSize: 13, fontWeight: "600", color: COLORS.textMuted },
-  modeBtnTextActive: { color: COLORS.orange },
-  langPair: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
-  langGroup: { flex: 1, gap: 5 },
-  langGroupLabel: { fontSize: 11, fontWeight: "600", color: COLORS.textMuted, letterSpacing: 0.8 },
-  langButton: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  langFlag: { fontSize: 20 },
-  langButtonText: { flex: 1, fontSize: 13, fontWeight: "600", color: COLORS.text },
-  swapBtn: { width: 38, height: 40, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 1 },
-  swapBtnText: { fontSize: 16, color: COLORS.textMuted },
-  sectionLabel: { fontSize: 11, fontWeight: "600", color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.8 },
-  voiceBox: { backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: 14, gap: 12 },
-  sliderRow: { gap: 6 },
-  sliderTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  sliderLabel: { fontSize: 13, fontWeight: "600", color: COLORS.text },
-  sliderRight: { flexDirection: "row", alignItems: "center", gap: 8 },
-  sliderValue: { fontSize: 12, fontWeight: "700", color: COLORS.orange, minWidth: 32, textAlign: "right" },
-  resetBtn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: COLORS.border },
-  resetBtnText: { fontSize: 11, color: COLORS.textDim },
-  sliderTrack: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 24 },
-  sliderDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.surface2, borderWidth: 1, borderColor: COLORS.border },
-  sliderDotActive: { backgroundColor: COLORS.orange, borderColor: COLORS.orange, width: 16, height: 16, borderRadius: 8 },
-  sliderHint: { fontSize: 11, color: COLORS.textDim },
-  textInput: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, color: COLORS.text, fontSize: 15, lineHeight: 22, padding: 14, minHeight: 110, textAlignVertical: "top" },
-  charCount: { textAlign: "right", fontSize: 11, color: COLORS.textDim, marginTop: -8 },
-  primaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.orange, borderRadius: 12, paddingVertical: 14 },
-  primaryBtnDisabled: { opacity: 0.4 },
-  primaryBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
-  statusPill: { flexDirection: "row", alignItems: "center", padding: 12, backgroundColor: COLORS.surface, borderRadius: 10, borderWidth: 1 },
-  statusText: { fontSize: 13, flex: 1 },
-  resultBox: { backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: 14, gap: 8 },
-  resultText: { fontSize: 17, fontWeight: "600", color: COLORS.text, lineHeight: 24 },
-  audioRow: { flexDirection: "row", gap: 10 },
-  playBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: COLORS.surface, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingVertical: 12 },
-  playBtnText: { fontSize: 14, fontWeight: "600", color: COLORS.text },
-  shareBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "rgba(232,118,26,0.12)", borderRadius: 10, borderWidth: 1, borderColor: COLORS.orange, paddingVertical: 12 },
-  shareBtnText: { fontSize: 14, fontWeight: "600", color: COLORS.orange },
-  progressBox: { backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: "hidden" },
-  progressItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  progressId: { fontSize: 13, fontWeight: "700", color: COLORS.text },
-  progressStatus: { fontSize: 12, fontWeight: "600" },
-  modalContainer: { flex: 1, backgroundColor: COLORS.bg },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  modalTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text },
-  modalClose: { backgroundColor: COLORS.orange, paddingHorizontal: 16, paddingVertical: 7, borderRadius: 16 },
-  modalCloseText: { color: "#fff", fontWeight: "700", fontSize: 13 },
-  langItem: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  langItemActive: { backgroundColor: "rgba(232,118,26,0.1)" },
-  langItemText: { flex: 1, fontSize: 15, fontWeight: "500", color: COLORS.textMuted },
-  langItemTextActive: { color: COLORS.orange, fontWeight: "700" },
-});
