@@ -1,5 +1,5 @@
-export const ANTHROPIC_API_KEY = "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";
-export const ELEVENLABS_API_KEY = "sk_a36647be2e68137ee21ac565b85370f1ca5920f578eca8ee";
+export const ANTHROPIC_API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? "";
+export const ELEVENLABS_API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY ?? "";
 export const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
 export const VOICE_IDS: Record<string, string> = {

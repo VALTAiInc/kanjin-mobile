@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useContext, useMemo, createContex
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   ActivityIndicator, Modal, FlatList, TouchableOpacity,
+  KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -298,6 +299,9 @@ function HomeScreen() {
   return (
     <ThemeCtx.Provider value={theme}>
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top"]}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <View style={{ flex: 1 }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
         <View style={{ flex: 1 }} />
         <View style={{ alignItems: "center" }}>
@@ -481,6 +485,9 @@ function HomeScreen() {
       <LangPickerModal visible={showBatchSourcePicker} selected={batchSourceLang} onSelect={setBatchSourceLang} onClose={() => setShowBatchSourcePicker(false)} />
       <LangPickerModal visible={showBatchTargetPicker} selected={batchTargetLang} onSelect={setBatchTargetLang} onClose={() => setShowBatchTargetPicker(false)} />
       <LangPickerModal visible={showBatchSpeakPicker} selected={batchSpeakLang} onSelect={setBatchSpeakLang} onClose={() => setShowBatchSpeakPicker(false)} />
+    </View>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
     </SafeAreaView>
     </ThemeCtx.Provider>
   );
