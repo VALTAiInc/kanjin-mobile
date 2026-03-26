@@ -10,6 +10,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Audio } from "expo-av";
 import * as Sharing from "expo-sharing";
+import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
 import { translateAndSpeak, speakText } from "../utils/api";
@@ -146,15 +147,138 @@ const splashStyles = StyleSheet.create({
   transcribeBtnText: { fontSize: 16, fontWeight: "800", color: "rgba(255,255,255,0.7)", letterSpacing: 1.2 },
 });
 
-function TranscribePlaceholder({ onBack }: { onBack: () => void }) {
+function TranscribeScreen({ onBack }: { onBack: () => void }) {
+  const [lang, setLang] = useState("en");
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Hold the mic to record", type: "idle" });
+
+  const startRecording = useCallback(async () => {
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) { setStatus({ msg: "Microphone permission denied", type: "error" }); return; }
+      const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setRecording(rec);
+      setIsRecording(true);
+      setStatus({ msg: "Recording...", type: "active" });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch (e: any) {
+      setStatus({ msg: "Failed to start recording: " + e.message, type: "error" });
+    }
+  }, []);
+
+  const stopAndTranscribe = useCallback(async () => {
+    if (!recording) return;
+    setIsRecording(false);
+    setStatus({ msg: "Transcribing...", type: "active" });
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      setRecording(null);
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      if (!uri) { setStatus({ msg: "No recording found", type: "error" }); return; }
+
+      const formData = new FormData();
+      formData.append("audio", { uri, name: "recording.m4a", type: "audio/m4a" } as any);
+      formData.append("language", lang);
+
+      const response = await fetch("https://bridge-backend-production-b481.up.railway.app/api/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => "");
+        throw new Error(`Server error ${response.status}: ${errBody}`);
+      }
+
+      const data = await response.json();
+      const text = data.transcript ?? data.text ?? "";
+      setTranscript(text);
+      setStatus({ msg: "Transcription complete", type: "success" });
+    } catch (e: any) {
+      setStatus({ msg: "Error: " + e.message, type: "error" });
+    }
+  }, [recording, lang]);
+
+  const copyTranscript = useCallback(async () => {
+    await Clipboard.setStringAsync(transcript);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [transcript]);
+
+  const shareTranscript = useCallback(async () => {
+    const fileUri = (FileSystem.documentDirectory ?? "") + "transcript.txt";
+    await FileSystem.writeAsStringAsync(fileUri, transcript);
+    await Sharing.shareAsync(fileUri, { mimeType: "text/plain", dialogTitle: "Share Transcript" });
+  }, [transcript]);
+
   return (
-    <View style={{ flex: 1, backgroundColor: "#0A0A0F", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 }}>
-      <Pressable onPress={onBack} style={{ position: "absolute", top: 60, left: 20, flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-        <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>Back</Text>
-      </Pressable>
-      <Text style={{ fontSize: 20, fontWeight: "700", color: "rgba(255,255,255,0.5)", textAlign: "center" }}>Transcription coming soon</Text>
-    </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#0A0A0F" }} edges={["top"]}>
+      {/* Header */}
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
+        <Pressable onPress={onBack} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+          <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>Back</Text>
+        </Pressable>
+        <Text style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}>Transcribe</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        {/* Language selector */}
+        <View style={{ marginTop: 16, gap: 4 }}>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>LANGUAGE</Text>
+          <LangButton code={lang} onPress={() => setShowLangPicker(true)} />
+        </View>
+
+        {/* Mic button */}
+        <View style={{ alignItems: "center", marginTop: 40, marginBottom: 24 }}>
+          <Pressable
+            onPressIn={startRecording}
+            onPressOut={stopAndTranscribe}
+            style={({ pressed }) => ({
+              width: 120, height: 120, borderRadius: 60,
+              backgroundColor: isRecording ? "#FE7725" : pressed ? "rgba(254,119,37,0.3)" : "#12121A",
+              borderWidth: 3, borderColor: "#FE7725",
+              alignItems: "center", justifyContent: "center",
+              ...(isRecording ? { shadowColor: "#FE7725", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 20 } : {}),
+            })}
+          >
+            <Ionicons name="mic" size={48} color={isRecording ? "#FFFFFF" : "#FE7725"} />
+          </Pressable>
+          <Text style={{ marginTop: 12, fontSize: 13, color: "rgba(255,255,255,0.45)", fontStyle: "italic" }}>
+            {isRecording ? "Release to transcribe" : "Hold to record"}
+          </Text>
+        </View>
+
+        {/* Status */}
+        <StatusPill msg={status.msg} type={status.type} />
+
+        {/* Transcript */}
+        {transcript !== "" && (
+          <View style={{ marginTop: 16, backgroundColor: "#12121A", borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", padding: 14, gap: 10 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSCRIPT</Text>
+            <Text style={{ fontSize: 15, color: "#FFFFFF", lineHeight: 22 }} selectable>{transcript}</Text>
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+              <Pressable onPress={copyTranscript} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "rgba(232,118,26,0.15)", borderRadius: 8, borderWidth: 1, borderColor: "#FE7725", paddingVertical: 10 }}>
+                <Ionicons name="copy-outline" size={18} color="#FE7725" />
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#FE7725" }}>Copy</Text>
+              </Pressable>
+              <Pressable onPress={shareTranscript} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#12121A", borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingVertical: 10 }}>
+                <Ionicons name="share-outline" size={18} color="#FFFFFF" />
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#FFFFFF" }}>Share</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      <LangPickerModal visible={showLangPicker} selected={lang} onSelect={setLang} onClose={() => setShowLangPicker(false)} />
+    </SafeAreaView>
   );
 }
 
@@ -172,7 +296,7 @@ export default function AppEntry() {
   }
 
   if (transcribeMode) {
-    return <TranscribePlaceholder onBack={() => { setStarted(false); setTranscribeMode(false); }} />;
+    return <TranscribeScreen onBack={() => { setStarted(false); setTranscribeMode(false); }} />;
   }
 
   return <HomeScreen />;
