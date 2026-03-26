@@ -12,9 +12,8 @@ import { Audio } from "expo-av";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
-import { translateText, synthesizeText } from "../utils/api";
+import { translateAndSpeak } from "../utils/api";
 
-interface VoiceSettings { speed: number; stability: number; style: number; }
 interface BatchLine { id: string; text: string; }
 interface BatchResult { id: string; status: "ok" | "error" | "pending"; error?: string; }
 
@@ -86,39 +85,7 @@ function LangButton({ code, onPress }: { code: string; onPress: () => void }) {
   );
 }
 
-function SliderRow({ label, value, min, max, step, hint, onChange, onReset }: {
-  label: string; value: number; min: number; max: number; step: number;
-  hint: string; onChange: (v: number) => void; onReset: () => void;
-}) {
-  const { c } = useContext(ThemeCtx);
-  const steps = Math.round((max - min) / step);
-  const currentStep = Math.round((value - min) / step);
-  return (
-    <View style={{ gap: 3 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ fontSize: 12, fontWeight: "600", color: c.text }}>{label}</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text style={{ fontSize: 11, fontWeight: "700", color: c.orange, minWidth: 32, textAlign: "right" }}>{value.toFixed(2)}</Text>
-          <Pressable onPress={onReset} style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: c.border }}>
-            <Text style={{ fontSize: 10, color: c.textDim }}>reset</Text>
-          </Pressable>
-        </View>
-      </View>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 22 }}>
-        {Array.from({ length: steps + 1 }).map((_, i) => (
-          <Pressable key={i}
-            onPress={() => onChange(Math.round((min + i * step) * 100) / 100)}
-            style={i === currentStep
-              ? { width: 14, height: 14, borderRadius: 7, backgroundColor: c.orange, borderWidth: 1, borderColor: c.orange }
-              : { width: 9, height: 9, borderRadius: 5, backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border }
-            }
-          />
-        ))}
-      </View>
-      <Text style={{ fontSize: 10, color: c.textDim }}>{hint}</Text>
-    </View>
-  );
-}
+
 
 function StatusPill({ msg, type }: { msg: string; type: "idle"|"active"|"success"|"error" }) {
   const { c } = useContext(ThemeCtx);
@@ -192,7 +159,6 @@ function HomeScreen() {
   const [singleTranslation, setSingleTranslation] = useState("");
   const [singleStatus, setSingleStatus] = useState<{msg:string;type:"idle"|"active"|"success"|"error"}>({ msg: "Paste text and hit Generate", type: "idle" });
   const [singleAudioUri, setSingleAudioUri] = useState<string|null>(null);
-  const [singleVoice, setSingleVoice] = useState<VoiceSettings>({ speed: 1.0, stability: 0.5, style: 0.2 });
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [showTargetPicker, setShowTargetPicker] = useState(false);
   const [showSpeakPicker, setShowSpeakPicker] = useState(false);
@@ -203,7 +169,6 @@ function HomeScreen() {
   const [batchTargetLang, setBatchTargetLang] = useState("ja");
   const [batchSpeakLang, setBatchSpeakLang] = useState("ja");
   const [batchText, setBatchText] = useState("");
-  const [batchVoice, setBatchVoice] = useState<VoiceSettings>({ speed: 1.0, stability: 0.5, style: 0.2 });
   const [batchStatus, setBatchStatus] = useState<{msg:string;type:"idle"|"active"|"success"|"error"}>({ msg: "Paste script, hit Generate", type: "idle" });
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
@@ -233,20 +198,16 @@ function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSingleAudioUri(null); setSingleTranslation("");
     try {
-      let outputText = text;
       const tgtLang = singleMode === "translate" ? targetLang : speakLang;
-      if (singleMode === "translate") {
-        setSingleStatus({ msg: "Step 1/2 — Translating with Claude...", type: "active" });
-        outputText = await translateText(text, sourceLang, targetLang);
-        setSingleTranslation(outputText);
-      }
-      setSingleStatus({ msg: singleMode === "translate" ? "Step 2/2 — Generating voice..." : "Generating voice...", type: "active" });
-      const uri = await synthesizeText(outputText, tgtLang, singleVoice);
-      setSingleAudioUri(uri);
+      const srcLang = singleMode === "translate" ? sourceLang : tgtLang;
+      setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
+      const result = await translateAndSpeak(text, srcLang, tgtLang);
+      if (singleMode === "translate") setSingleTranslation(result.translation);
+      setSingleAudioUri(result.audioUri);
       setSingleStatus({ msg: "Done — tap Play or Share", type: "success" });
-      await playAudio(uri);
+      await playAudio(result.audioUri);
     } catch (err: any) { setSingleStatus({ msg: "Error: " + err.message, type: "error" }); }
-  }, [singleText, singleMode, sourceLang, targetLang, speakLang, singleVoice]);
+  }, [singleText, singleMode, sourceLang, targetLang, speakLang]);
 
   async function shareSingleAudio() {
     if (!singleAudioUri) return;
@@ -263,6 +224,7 @@ function HomeScreen() {
     setBatchRunning(true);
     setBatchResults(lines.map(l => ({ id: l.id, status: "pending" })));
     const tgtLang = batchMode === "translate" ? batchTargetLang : batchSpeakLang;
+    const srcLang = batchMode === "translate" ? batchSourceLang : tgtLang;
     const tempDir = (FileSystem.cacheDirectory ?? "") + "kanjin-batch/";
     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
     const filePaths: string[] = [];
@@ -271,11 +233,9 @@ function HomeScreen() {
       const { id, text } = lines[i];
       setBatchStatus({ msg: `Processing ${i + 1} / ${lines.length}...`, type: "active" });
       try {
-        let speakText = text;
-        if (batchMode === "translate") speakText = await translateText(text, batchSourceLang, tgtLang);
-        const uri = await synthesizeText(speakText, tgtLang, batchVoice);
+        const result = await translateAndSpeak(text, srcLang, tgtLang);
         const dest = tempDir + `${id}.mp3`;
-        await FileSystem.copyAsync({ from: uri, to: dest });
+        await FileSystem.copyAsync({ from: result.audioUri, to: dest });
         filePaths.push(dest);
         setBatchResults(prev => prev.map(r => r.id === id ? { ...r, status: "ok" } : r));
       } catch (err: any) {
@@ -292,7 +252,7 @@ function HomeScreen() {
     setBatchStatus(errors.length === 0
       ? { msg: `✓ All ${lines.length} files generated!`, type: "success" }
       : { msg: `Done — ${lines.length - errors.length} OK, ${errors.length} failed`, type: "error" });
-  }, [batchText, batchMode, batchSourceLang, batchTargetLang, batchSpeakLang, batchVoice, batchRunning]);
+  }, [batchText, batchMode, batchSourceLang, batchTargetLang, batchSpeakLang, batchRunning]);
 
   const lineCount = parseLines(batchText).length;
 
@@ -360,16 +320,6 @@ function HomeScreen() {
               </View>
             )}
 
-            <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 8 }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE CONTROLS</Text>
-              <SliderRow label="Speed" value={singleVoice.speed} min={0.7} max={1.2} step={0.1} hint="0.7 = slow · 1.0 = normal · 1.2 = fast"
-                onChange={v => setSingleVoice(p => ({ ...p, speed: v }))} onReset={() => setSingleVoice(p => ({ ...p, speed: 1.0 }))} />
-              <SliderRow label="Stability" value={singleVoice.stability} min={0} max={1} step={0.25} hint="Low = expressive · High = consistent"
-                onChange={v => setSingleVoice(p => ({ ...p, stability: v }))} onReset={() => setSingleVoice(p => ({ ...p, stability: 0.5 }))} />
-              <SliderRow label="Style" value={singleVoice.style} min={0} max={1} step={0.25} hint="Low = neutral · High = dramatic"
-                onChange={v => setSingleVoice(p => ({ ...p, style: v }))} onReset={() => setSingleVoice(p => ({ ...p, style: 0.2 }))} />
-            </View>
-
             <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>{singleMode === "translate" ? "TEXT TO TRANSLATE" : "TEXT TO SPEAK"}</Text>
             <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 85, textAlignVertical: "top" }} multiline value={singleText} onChangeText={setSingleText}
               placeholder="Type or paste text here..." placeholderTextColor={c.textDim} maxLength={5000} />
@@ -435,16 +385,6 @@ function HomeScreen() {
                 <LangButton code={batchSpeakLang} onPress={() => setShowBatchSpeakPicker(true)} />
               </View>
             )}
-
-            <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 8 }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE CONTROLS</Text>
-              <SliderRow label="Speed" value={batchVoice.speed} min={0.7} max={1.2} step={0.1} hint="0.7 = slow · 1.0 = normal · 1.2 = fast"
-                onChange={v => setBatchVoice(p => ({ ...p, speed: v }))} onReset={() => setBatchVoice(p => ({ ...p, speed: 1.0 }))} />
-              <SliderRow label="Stability" value={batchVoice.stability} min={0} max={1} step={0.25} hint="Low = expressive · High = consistent"
-                onChange={v => setBatchVoice(p => ({ ...p, stability: v }))} onReset={() => setBatchVoice(p => ({ ...p, stability: 0.5 }))} />
-              <SliderRow label="Style" value={batchVoice.style} min={0} max={1} step={0.25} hint="Low = neutral · High = dramatic"
-                onChange={v => setBatchVoice(p => ({ ...p, style: v }))} onReset={() => setBatchVoice(p => ({ ...p, style: 0.2 }))} />
-            </View>
 
             <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>NUMBERED SCRIPT</Text>
             <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 160, textAlignVertical: "top" }} multiline value={batchText} onChangeText={setBatchText}

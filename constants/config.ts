@@ -1,25 +1,3 @@
-export const ANTHROPIC_API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? "";
-export const ELEVENLABS_API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY ?? "";
-export const ELEVENLABS_MODEL = "eleven_multilingual_v2";
-
-export const VOICE_IDS: Record<string, string> = {
-  en:    "EXAVITQu4vr4xnSDxMaL",
-  ja:    "T7yYq3WpB94yAuOXraRi",
-  es:    "AZnzlk1XvdvUeBnXmlld",
-  fr:    "MF3mGyEYCl7XYWbV9V6O",
-  de:    "ErXwobaYiN019PkySvjV",
-  pt:    "VR6AewLTigWG4xSOukaG",
-  zh:    "pNInz6obpgDQGcFmaJgB",
-  ko:    "pMsXgVXv3BLzUgSXRplE",
-  ar:    "jsCqWAovK2LkecY7zXl4",
-  "ar-LB": "jsCqWAovK2LkecY7zXl4",
-  hi:    "ThT5KcBeYPX3keUQqHPh",
-  it:    "TxGEqnHWrfWFTfGW9XjX",
-  ru:    "yoZ06aMxZJJ28mfd3POQ",
-  nl:    "Zlb1dXrM653N07WRdFW3",
-  tr:    "g5CIjZEefAph4nQFvHAz",
-  pl:    "onwK4e9ZLuTAKqWW03F9",
-};
 
 export const LANGUAGES = [
   { code: "en",    label: "English",         flag: "🇨🇦" },
@@ -39,13 +17,6 @@ export const LANGUAGES = [
   { code: "tr",    label: "Turkish",          flag: "🇹🇷" },
   { code: "pl",    label: "Polish",           flag: "🇵🇱" },
 ];
-
-export const LANG_NAMES: Record<string, string> = {
-  en: "English", ja: "Japanese", es: "Spanish", fr: "French",
-  de: "German", pt: "Portuguese", zh: "Mandarin Chinese", ko: "Korean",
-  ar: "Arabic", "ar-LB": "Lebanese Arabic", hi: "Hindi", it: "Italian",
-  ru: "Russian", nl: "Dutch", tr: "Turkish", pl: "Polish",
-};
 
 export const COLORS = {
   bg: "#0A0A0F",
