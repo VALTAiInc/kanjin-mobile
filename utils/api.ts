@@ -2,11 +2,25 @@ import * as FileSystem from "expo-file-system/legacy";
 
 const API_BASE = "https://bridge-backend-production-b481.up.railway.app";
 
+const ELEVENLABS_API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY ?? "";
+
+const VOICE_IDS: Record<string, string> = {
+  en: "EXAVITQu4vr4xnSDxMaL", ja: "T7yYq3WpB94yAuOXraRi",
+  es: "AZnzlk1XvdvUeBnXmlld", fr: "MF3mGyEYCl7XYWbV9V6O",
+  de: "ErXwobaYiN019PkySvjV", pt: "VR6AewLTigWG4xSOukaG",
+  zh: "pNInz6obpgDQGcFmaJgB", ko: "pMsXgVXv3BLzUgSXRplE",
+  ar: "jsCqWAovK2LkecY7zXl4", "ar-LB": "jsCqWAovK2LkecY7zXl4",
+  hi: "ThT5KcBeYPX3keUQqHPh", it: "TxGEqnHWrfWFTfGW9XjX",
+  ru: "yoZ06aMxZJJ28mfd3POQ", nl: "Zlb1dXrM653N07WRdFW3",
+  tr: "g5CIjZEefAph4nQFvHAz", pl: "onwK4e9ZLuTAKqWW03F9",
+};
+
 export interface TranslateResult {
   translation: string;
   audioUri: string;
 }
 
+/** Translate text via the Bridge backend (also returns TTS audio). */
 export async function translateAndSpeak(
   text: string,
   sourceLanguage: string,
@@ -31,4 +45,41 @@ export async function translateAndSpeak(
   });
 
   return { translation: data.translation, audioUri: fileUri };
+}
+
+/** Speak text as-is via ElevenLabs TTS (no translation). */
+export async function speakText(
+  text: string,
+  language: string,
+): Promise<string> {
+  const voiceId = VOICE_IDS[language] || VOICE_IDS["en"];
+
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_192`,
+    {
+      method: "POST",
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg",
+      },
+      body: JSON.stringify({
+        text,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: { stability: 0.5, similarity_boost: 1.0, style: 0.2, use_speaker_boost: true, speed: 1.0 },
+      }),
+    }
+  );
+
+  if (!response.ok) throw new Error(`ElevenLabs error ${response.status}`);
+
+  const arrayBuffer = await response.arrayBuffer();
+  const uint8 = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (let i = 0; i < uint8.byteLength; i++) binary += String.fromCharCode(uint8[i]);
+  const base64 = btoa(binary);
+
+  const fileUri = (FileSystem.cacheDirectory ?? "") + `tts_${Date.now()}.mp3`;
+  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+  return fileUri;
 }

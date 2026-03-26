@@ -12,7 +12,7 @@ import { Audio } from "expo-av";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
-import { translateAndSpeak } from "../utils/api";
+import { translateAndSpeak, speakText } from "../utils/api";
 
 interface BatchLine { id: string; text: string; }
 interface BatchResult { id: string; status: "ok" | "error" | "pending"; error?: string; }
@@ -198,14 +198,19 @@ function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSingleAudioUri(null); setSingleTranslation("");
     try {
-      const tgtLang = singleMode === "translate" ? targetLang : speakLang;
-      const srcLang = singleMode === "translate" ? sourceLang : tgtLang;
-      setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
-      const result = await translateAndSpeak(text, srcLang, tgtLang);
-      if (singleMode === "translate") setSingleTranslation(result.translation);
-      setSingleAudioUri(result.audioUri);
+      let audioUri: string;
+      if (singleMode === "translate") {
+        setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
+        const result = await translateAndSpeak(text, sourceLang, targetLang);
+        setSingleTranslation(result.translation);
+        audioUri = result.audioUri;
+      } else {
+        setSingleStatus({ msg: "Generating audio...", type: "active" });
+        audioUri = await speakText(text, speakLang);
+      }
+      setSingleAudioUri(audioUri);
       setSingleStatus({ msg: "Done — tap Play or Share", type: "success" });
-      await playAudio(result.audioUri);
+      await playAudio(audioUri);
     } catch (err: any) { setSingleStatus({ msg: "Error: " + err.message, type: "error" }); }
   }, [singleText, singleMode, sourceLang, targetLang, speakLang]);
 
@@ -223,8 +228,6 @@ function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setBatchRunning(true);
     setBatchResults(lines.map(l => ({ id: l.id, status: "pending" })));
-    const tgtLang = batchMode === "translate" ? batchTargetLang : batchSpeakLang;
-    const srcLang = batchMode === "translate" ? batchSourceLang : tgtLang;
     const tempDir = (FileSystem.cacheDirectory ?? "") + "kanjin-batch/";
     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
     const filePaths: string[] = [];
@@ -233,9 +236,15 @@ function HomeScreen() {
       const { id, text } = lines[i];
       setBatchStatus({ msg: `Processing ${i + 1} / ${lines.length}...`, type: "active" });
       try {
-        const result = await translateAndSpeak(text, srcLang, tgtLang);
+        let audioUri: string;
+        if (batchMode === "translate") {
+          const result = await translateAndSpeak(text, batchSourceLang, batchTargetLang);
+          audioUri = result.audioUri;
+        } else {
+          audioUri = await speakText(text, batchSpeakLang);
+        }
         const dest = tempDir + `${id}.mp3`;
-        await FileSystem.copyAsync({ from: result.audioUri, to: dest });
+        await FileSystem.copyAsync({ from: audioUri, to: dest });
         filePaths.push(dest);
         setBatchResults(prev => prev.map(r => r.id === id ? { ...r, status: "ok" } : r));
       } catch (err: any) {
