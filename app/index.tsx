@@ -98,7 +98,7 @@ function StatusPill({ msg, type }: { msg: string; type: "idle"|"active"|"success
   );
 }
 
-function SplashScreen({ onStart }: { onStart: () => void }) {
+function SplashScreen({ onTranslate, onTranscribe }: { onTranslate: () => void; onTranscribe: () => void }) {
   return (
     <View style={splashStyles.container}>
       <View style={splashStyles.content}>
@@ -117,9 +117,14 @@ function SplashScreen({ onStart }: { onStart: () => void }) {
       </View>
 
       <View style={splashStyles.bottom}>
-        <Pressable style={splashStyles.startBtn} onPress={onStart}>
-          <Text style={splashStyles.startBtnText}>START TRANSLATING</Text>
-        </Pressable>
+        <View style={splashStyles.btnRow}>
+          <Pressable style={splashStyles.translateBtn} onPress={onTranslate}>
+            <Text style={splashStyles.startBtnText}>Translate</Text>
+          </Pressable>
+          <Pressable style={splashStyles.transcribeBtn} onPress={onTranscribe}>
+            <Text style={splashStyles.transcribeBtnText}>Transcribe</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -134,13 +139,42 @@ const splashStyles = StyleSheet.create({
   titleBy: { color: "#FE7725", fontWeight: "800" },
   tagline: { fontSize: 15, color: "rgba(255,255,255,0.45)", fontStyle: "italic" },
   bottom: { width: "100%" },
-  startBtn: { backgroundColor: "#FE7725", borderRadius: 14, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
+  btnRow: { flexDirection: "row", gap: 12 },
+  translateBtn: { flex: 1, backgroundColor: "#FE7725", borderRadius: 14, paddingVertical: 16, alignItems: "center", justifyContent: "center" },
+  transcribeBtn: { flex: 1, borderRadius: 14, paddingVertical: 16, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", backgroundColor: "transparent" },
   startBtnText: { fontSize: 16, fontWeight: "800", color: "#FFFFFF", letterSpacing: 1.2 },
+  transcribeBtnText: { fontSize: 16, fontWeight: "800", color: "rgba(255,255,255,0.7)", letterSpacing: 1.2 },
 });
+
+function TranscribePlaceholder({ onBack }: { onBack: () => void }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: "#0A0A0F", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 }}>
+      <Pressable onPress={onBack} style={{ position: "absolute", top: 60, left: 20, flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+        <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>Back</Text>
+      </Pressable>
+      <Text style={{ fontSize: 20, fontWeight: "700", color: "rgba(255,255,255,0.5)", textAlign: "center" }}>Transcription coming soon</Text>
+    </View>
+  );
+}
 
 export default function AppEntry() {
   const [started, setStarted] = useState(false);
-  if (!started) return <SplashScreen onStart={() => setStarted(true)} />;
+  const [transcribeMode, setTranscribeMode] = useState(false);
+
+  if (!started) {
+    return (
+      <SplashScreen
+        onTranslate={() => setStarted(true)}
+        onTranscribe={() => { setStarted(true); setTranscribeMode(true); }}
+      />
+    );
+  }
+
+  if (transcribeMode) {
+    return <TranscribePlaceholder onBack={() => { setStarted(false); setTranscribeMode(false); }} />;
+  }
+
   return <HomeScreen />;
 }
 
