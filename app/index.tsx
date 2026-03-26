@@ -153,7 +153,7 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Hold the mic to record", type: "idle" });
+  const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Tap the mic to record", type: "idle" });
 
   const startRecording = useCallback(async () => {
     try {
@@ -237,8 +237,7 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
         {/* Mic button */}
         <View style={{ alignItems: "center", marginTop: 40, marginBottom: 24 }}>
           <Pressable
-            onPressIn={startRecording}
-            onPressOut={stopAndTranscribe}
+            onPress={isRecording ? stopAndTranscribe : startRecording}
             style={({ pressed }) => ({
               width: 120, height: 120, borderRadius: 60,
               backgroundColor: isRecording ? "#FE7725" : pressed ? "rgba(254,119,37,0.3)" : "#12121A",
@@ -247,10 +246,10 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
               ...(isRecording ? { shadowColor: "#FE7725", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 20 } : {}),
             })}
           >
-            <Ionicons name="mic" size={48} color={isRecording ? "#FFFFFF" : "#FE7725"} />
+            <Ionicons name={isRecording ? "stop" : "mic"} size={48} color={isRecording ? "#FFFFFF" : "#FE7725"} />
           </Pressable>
           <Text style={{ marginTop: 12, fontSize: 13, color: "rgba(255,255,255,0.45)", fontStyle: "italic" }}>
-            {isRecording ? "Release to transcribe" : "Hold to record"}
+            {isRecording ? "Tap to stop" : "Tap to record"}
           </Text>
         </View>
 
