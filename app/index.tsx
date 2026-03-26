@@ -148,14 +148,18 @@ const splashStyles = StyleSheet.create({
   transcribeBtnText: { fontSize: 16, fontWeight: "800", color: "rgba(255,255,255,0.7)", letterSpacing: 1.2 },
 });
 
-function TranscribeScreen({ onBack }: { onBack: () => void }) {
-  const [lang, setLang] = useState("en");
-  const [showLangPicker, setShowLangPicker] = useState(false);
+function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; onUseInTranslator: (text: string) => void }) {
+  const [audioLang, setAudioLang] = useState("en");
+  const [translateTo, setTranslateTo] = useState("none");
+  const [showAudioLangPicker, setShowAudioLangPicker] = useState(false);
+  const [showTranslatePicker, setShowTranslatePicker] = useState(false);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [translation, setTranslation] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Tap the mic to record", type: "idle" });
+  const scrollRef = useRef<ScrollView>(null);
 
   const startRecording = useCallback(async () => {
     try {
@@ -174,10 +178,11 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
 
   const sendToTranscribe = useCallback(async (uri: string, name: string, mimeType: string) => {
     setStatus({ msg: "Transcribing...", type: "active" });
+    setTranslation("");
     try {
       const formData = new FormData();
       formData.append("audio", { uri, name, type: mimeType } as any);
-      formData.append("language", lang);
+      formData.append("language", audioLang);
 
       const response = await fetch("https://bridge-backend-production-b481.up.railway.app/api/transcribe", {
         method: "POST",
@@ -192,11 +197,19 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
       const data = await response.json();
       const text = data.transcript ?? data.text ?? "";
       setTranscript(text);
-      setStatus({ msg: "Transcription complete", type: "success" });
+
+      if (translateTo !== "none" && text) {
+        setStatus({ msg: "Translating...", type: "active" });
+        const result = await translateAndSpeak(text, audioLang, translateTo);
+        setTranslation(result.translation);
+      }
+
+      setStatus({ msg: "Done", type: "success" });
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300);
     } catch (e: any) {
       setStatus({ msg: "Error: " + e.message, type: "error" });
     }
-  }, [lang]);
+  }, [audioLang, translateTo]);
 
   const stopAndTranscribe = useCallback(async () => {
     if (!recording) return;
@@ -232,16 +245,18 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
     }
   }, [sendToTranscribe]);
 
-  const copyTranscript = useCallback(async () => {
-    await Clipboard.setStringAsync(transcript);
+  const copyAll = useCallback(async () => {
+    const text = translation ? `Transcript:\n${transcript}\n\nTranslation:\n${translation}` : transcript;
+    await Clipboard.setStringAsync(text);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [transcript]);
+  }, [transcript, translation]);
 
-  const shareTranscript = useCallback(async () => {
+  const shareAll = useCallback(async () => {
+    const text = translation ? `Transcript:\n${transcript}\n\nTranslation:\n${translation}` : transcript;
     const fileUri = (FileSystem.documentDirectory ?? "") + "transcript.txt";
-    await FileSystem.writeAsStringAsync(fileUri, transcript);
+    await FileSystem.writeAsStringAsync(fileUri, text);
     await Sharing.shareAsync(fileUri, { mimeType: "text/plain", dialogTitle: "Share Transcript" });
-  }, [transcript]);
+  }, [transcript, translation]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#0A0A0F" }} edges={["top"]}>
@@ -255,15 +270,37 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
         <View style={{ width: 60 }} />
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        {/* Language selector */}
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        {/* Audio Language selector */}
         <View style={{ marginTop: 16, gap: 4 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>LANGUAGE</Text>
-          <LangButton code={lang} onPress={() => setShowLangPicker(true)} />
+          <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>AUDIO LANGUAGE</Text>
+          <LangButton code={audioLang} onPress={() => setShowAudioLangPicker(true)} />
+        </View>
+
+        {/* Translate To selector */}
+        <View style={{ marginTop: 12, gap: 4 }}>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATE TO</Text>
+          <Pressable
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#12121A", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
+            onPress={() => setShowTranslatePicker(true)}
+          >
+            {translateTo === "none" ? (
+              <>
+                <Ionicons name="remove-circle-outline" size={18} color="rgba(255,255,255,0.45)" />
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.45)" }}>No translation</Text>
+              </>
+            ) : (
+              <>
+                <Text style={{ fontSize: 18 }}>{LANGUAGES.find(l => l.code === translateTo)?.flag ?? ""}</Text>
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: "#FFFFFF" }}>{LANGUAGES.find(l => l.code === translateTo)?.label ?? ""}</Text>
+              </>
+            )}
+            <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.45)" />
+          </Pressable>
         </View>
 
         {/* Mic button */}
-        <View style={{ alignItems: "center", marginTop: 40, marginBottom: 24 }}>
+        <View style={{ alignItems: "center", marginTop: 32, marginBottom: 24 }}>
           <Pressable
             onPress={isRecording ? stopAndTranscribe : startRecording}
             style={({ pressed }) => ({
@@ -301,7 +338,7 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
         {/* Status */}
         <StatusPill msg={status.msg} type={status.type} />
 
-        {/* Transcript */}
+        {/* Transcript & Translation */}
         {transcript !== "" && (
           <View style={{ marginTop: 16, backgroundColor: "#12121A", borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", padding: 14, gap: 10 }}>
             <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSCRIPT</Text>
@@ -313,21 +350,60 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
             )}
             <Text style={{ fontSize: 15, color: "#FFFFFF", lineHeight: 22 }} selectable>{transcript}</Text>
 
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-              <Pressable onPress={copyTranscript} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "rgba(232,118,26,0.15)", borderRadius: 8, borderWidth: 1, borderColor: "#FE7725", paddingVertical: 10 }}>
-                <Ionicons name="copy-outline" size={18} color="#FE7725" />
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#FE7725" }}>Copy</Text>
-              </Pressable>
-              <Pressable onPress={shareTranscript} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#12121A", borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingVertical: 10 }}>
-                <Ionicons name="share-outline" size={18} color="#FFFFFF" />
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#FFFFFF" }}>Share</Text>
-              </Pressable>
-            </View>
+            {translation !== "" && (
+              <>
+                <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginVertical: 4 }} />
+                <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATION</Text>
+                <Text style={{ fontSize: 15, color: "#FE7725", lineHeight: 22 }} selectable>{translation}</Text>
+              </>
+            )}
+
+            <Pressable onPress={copyAll} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#12121A", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingVertical: 12, marginTop: 4 }}>
+              <Ionicons name="copy-outline" size={18} color="#FE7725" />
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Copy</Text>
+            </Pressable>
+
+            <Pressable onPress={() => onUseInTranslator(transcript)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "rgba(232,118,26,0.15)", borderRadius: 10, borderWidth: 1, borderColor: "#FE7725", paddingVertical: 12 }}>
+              <Ionicons name="language-outline" size={18} color="#FE7725" />
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Use in Translator</Text>
+            </Pressable>
           </View>
         )}
       </ScrollView>
 
-      <LangPickerModal visible={showLangPicker} selected={lang} onSelect={setLang} onClose={() => setShowLangPicker(false)} />
+      <LangPickerModal visible={showAudioLangPicker} selected={audioLang} onSelect={setAudioLang} onClose={() => setShowAudioLangPicker(false)} />
+
+      {/* Translate-to picker with "No translation" option */}
+      <Modal visible={showTranslatePicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowTranslatePicker(false)}>
+        <View style={{ flex: 1, backgroundColor: "#0A0A0F" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}>Translate To</Text>
+            <Pressable onPress={() => setShowTranslatePicker(false)} style={{ backgroundColor: "#FE7725", paddingHorizontal: 16, paddingVertical: 7, borderRadius: 16 }}>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Done</Text>
+            </Pressable>
+          </View>
+          <FlatList
+            data={[{ code: "none", label: "No translation", flag: "" }, ...LANGUAGES]}
+            keyExtractor={(item) => item.code}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }, item.code === translateTo && { backgroundColor: "rgba(232,118,26,0.15)" }]}
+                onPress={() => { setTranslateTo(item.code); setShowTranslatePicker(false); }}
+              >
+                {item.code === "none" ? (
+                  <Ionicons name="remove-circle-outline" size={20} color="rgba(255,255,255,0.45)" />
+                ) : (
+                  <Text style={{ fontSize: 20 }}>{item.flag}</Text>
+                )}
+                <Text style={[{ flex: 1, fontSize: 15, fontWeight: "500", color: "rgba(255,255,255,0.45)" }, item.code === translateTo && { color: "#FE7725", fontWeight: "700" }]}>
+                  {item.label}
+                </Text>
+                {item.code === translateTo && <Ionicons name="checkmark" size={18} color="#FE7725" />}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -335,6 +411,7 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
 export default function AppEntry() {
   const [started, setStarted] = useState(false);
   const [transcribeMode, setTranscribeMode] = useState(false);
+  const [singleText, setSingleText] = useState("");
 
   if (!started) {
     return (
@@ -346,13 +423,18 @@ export default function AppEntry() {
   }
 
   if (transcribeMode) {
-    return <TranscribeScreen onBack={() => { setStarted(false); setTranscribeMode(false); }} />;
+    return (
+      <TranscribeScreen
+        onBack={() => { setStarted(false); setTranscribeMode(false); }}
+        onUseInTranslator={(text) => { setSingleText(text); setTranscribeMode(false); }}
+      />
+    );
   }
 
-  return <HomeScreen />;
+  return <HomeScreen singleText={singleText} setSingleText={setSingleText} />;
 }
 
-function HomeScreen() {
+function HomeScreen({ singleText, setSingleText }: { singleText: string; setSingleText: (t: string) => void }) {
   const [isDark, setIsDark] = useState(true);
   const c = isDark ? DARK : LIGHT;
   const theme = useMemo(() => ({ c, isDark }), [isDark]);
@@ -363,7 +445,6 @@ function HomeScreen() {
   const [sourceLang, setSourceLang] = useState("en");
   const [targetLang, setTargetLang] = useState("ja");
   const [speakLang, setSpeakLang] = useState("ja");
-  const [singleText, setSingleText] = useState("");
   const [singleTranslation, setSingleTranslation] = useState("");
   const [singleStatus, setSingleStatus] = useState<{msg:string;type:"idle"|"active"|"success"|"error"}>({ msg: "Paste text and hit Generate", type: "idle" });
   const [singleAudioUri, setSingleAudioUri] = useState<string|null>(null);
