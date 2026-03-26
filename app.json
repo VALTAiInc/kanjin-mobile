@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Kanjin",
-    "slug": "kanjin",
-    "version": "1.0.0",
+    "name": "Bridge by VALT",
+    "slug": "bridge-by-valt",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
