@@ -11,6 +11,7 @@ import * as Haptics from "expo-haptics";
 import { Audio } from "expo-av";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
+import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
 import { translateAndSpeak, speakText } from "../utils/api";
@@ -153,6 +154,7 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
   const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Tap the mic to record", type: "idle" });
 
   const startRecording = useCallback(async () => {
@@ -170,19 +172,11 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
     }
   }, []);
 
-  const stopAndTranscribe = useCallback(async () => {
-    if (!recording) return;
-    setIsRecording(false);
+  const sendToTranscribe = useCallback(async (uri: string, name: string, mimeType: string) => {
     setStatus({ msg: "Transcribing...", type: "active" });
     try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setRecording(null);
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      if (!uri) { setStatus({ msg: "No recording found", type: "error" }); return; }
-
       const formData = new FormData();
-      formData.append("audio", { uri, name: "recording.m4a", type: "audio/m4a" } as any);
+      formData.append("audio", { uri, name, type: mimeType } as any);
       formData.append("language", lang);
 
       const response = await fetch("https://bridge-backend-production-b481.up.railway.app/api/transcribe", {
@@ -202,7 +196,41 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
     } catch (e: any) {
       setStatus({ msg: "Error: " + e.message, type: "error" });
     }
-  }, [recording, lang]);
+  }, [lang]);
+
+  const stopAndTranscribe = useCallback(async () => {
+    if (!recording) return;
+    setIsRecording(false);
+    setFileName(null);
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      setRecording(null);
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      if (!uri) { setStatus({ msg: "No recording found", type: "error" }); return; }
+      await sendToTranscribe(uri, "recording.m4a", "audio/m4a");
+    } catch (e: any) {
+      setStatus({ msg: "Error: " + e.message, type: "error" });
+    }
+  }, [recording, sendToTranscribe]);
+
+  const pickAndTranscribe = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["audio/x-m4a", "audio/mp4", "audio/mpeg", "audio/wav", "audio/*"],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      const ext = asset.name.split(".").pop()?.toLowerCase() ?? "m4a";
+      const mimeMap: Record<string, string> = { m4a: "audio/m4a", mp3: "audio/mpeg", wav: "audio/wav" };
+      setFileName(asset.name);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await sendToTranscribe(asset.uri, asset.name, mimeMap[ext] ?? asset.mimeType ?? "audio/m4a");
+    } catch (e: any) {
+      setStatus({ msg: "Error: " + e.message, type: "error" });
+    }
+  }, [sendToTranscribe]);
 
   const copyTranscript = useCallback(async () => {
     await Clipboard.setStringAsync(transcript);
@@ -253,6 +281,23 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
           </Text>
         </View>
 
+        {/* Upload button */}
+        <View style={{ alignItems: "center", marginBottom: 20 }}>
+          <Pressable
+            onPress={pickAndTranscribe}
+            style={({ pressed }) => ({
+              flexDirection: "row", alignItems: "center", gap: 8,
+              paddingHorizontal: 20, paddingVertical: 10,
+              borderRadius: 20, borderWidth: 1,
+              borderColor: pressed ? "#FE7725" : "rgba(255,255,255,0.2)",
+              backgroundColor: pressed ? "rgba(254,119,37,0.1)" : "transparent",
+            })}
+          >
+            <Ionicons name="cloud-upload-outline" size={18} color="rgba(255,255,255,0.6)" />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.6)" }}>Upload audio file</Text>
+          </Pressable>
+        </View>
+
         {/* Status */}
         <StatusPill msg={status.msg} type={status.type} />
 
@@ -260,6 +305,12 @@ function TranscribeScreen({ onBack }: { onBack: () => void }) {
         {transcript !== "" && (
           <View style={{ marginTop: 16, backgroundColor: "#12121A", borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", padding: 14, gap: 10 }}>
             <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSCRIPT</Text>
+            {fileName && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="document-outline" size={14} color="rgba(255,255,255,0.35)" />
+                <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{fileName}</Text>
+              </View>
+            )}
             <Text style={{ fontSize: 15, color: "#FFFFFF", lineHeight: 22 }} selectable>{transcript}</Text>
 
             <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
