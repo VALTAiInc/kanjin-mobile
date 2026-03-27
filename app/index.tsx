@@ -14,6 +14,7 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
+import { router } from "expo-router";
 import { translateAndSpeak, speakText } from "../utils/api";
 
 interface BatchLine { id: string; text: string; }
@@ -561,7 +562,7 @@ function HomeScreen({ singleText, setSingleText }: { singleText: string; setSing
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
-        <View style={{ flex: 1 }} />
+        <View style={{ flex: 1, paddingLeft: 16 }}><Pressable onPress={() => router.back()} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><Ionicons name="arrow-back" size={22} color={c.text} /><Text style={{ color: c.text, fontSize: 15, fontWeight: "600" }}>Back</Text></Pressable></View>
         <View style={{ alignItems: "center" }}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: c.text }}>Kanjin</Text>
           <Text style={{ fontSize: 10, fontWeight: "500", color: c.text, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 1 }}>powered by</Text>

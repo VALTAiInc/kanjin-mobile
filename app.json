@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Bridge by VALT",
-    "slug": "bridge-by-valt",
-    "version": "1.1.0",
+    "slug": "bridge",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -13,10 +13,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.valt.kanjin",
-      "buildNumber": "2",
+      "bundleIdentifier": "com.valt.bridge",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Kanjin needs microphone access to record your voice for translation.",
+        "NSMicrophoneUsageDescription": "Bridge needs microphone access to record your voice for translation.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -25,7 +25,7 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0A0A0F"
       },
-      "package": "com.valt.kanjin",
+      "package": "com.valt.bridge",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
@@ -35,14 +35,15 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Kanjin needs microphone access to record your voice for translation."
+          "microphonePermission": "Bridge needs microphone access to record your voice for translation."
         }
       ],
       "expo-font"
     ],
+    "owner": "thevalt",
     "extra": {
       "eas": {
-        "projectId": "aad3336d-c715-47d2-a71d-a30c6f3d06ae"
+        "projectId": "a6bcf79b-e04e-415a-842c-191393d108b7"
       }
     }
   }
