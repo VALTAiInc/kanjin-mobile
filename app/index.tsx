@@ -112,7 +112,7 @@ function SplashScreen({ onTranslate, onTranscribe }: { onTranslate: () => void; 
         </LinearGradient>
 
         <Text style={splashStyles.title}>
-          BRIDGE <Text style={splashStyles.titleBy}>by VALT</Text>
+          VOICE <Text style={splashStyles.titleBy}>by VALT</Text>
         </Text>
 
         <Text style={splashStyles.tagline}>Every conversation, every language.</Text>
@@ -341,7 +341,12 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
         {/* Transcript & Translation */}
         {transcript !== "" && (
           <View style={{ marginTop: 16, backgroundColor: "#12121A", borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", padding: 14, gap: 10 }}>
-            <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSCRIPT</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSCRIPT</Text>
+              <Pressable onPress={async () => { await Clipboard.setStringAsync(transcript); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }} hitSlop={8}>
+                <Ionicons name="copy-outline" size={16} color="rgba(255,255,255,0.45)" />
+              </Pressable>
+            </View>
             {fileName && (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                 <Ionicons name="document-outline" size={14} color="rgba(255,255,255,0.35)" />
@@ -353,7 +358,12 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
             {translation !== "" && (
               <>
                 <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginVertical: 4 }} />
-                <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATION</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATION</Text>
+                  <Pressable onPress={async () => { await Clipboard.setStringAsync(translation); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }} hitSlop={8}>
+                    <Ionicons name="copy-outline" size={16} color="rgba(255,255,255,0.45)" />
+                  </Pressable>
+                </View>
                 <Text style={{ fontSize: 15, color: "#FE7725", lineHeight: 22 }} selectable>{translation}</Text>
               </>
             )}
@@ -363,7 +373,7 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Copy</Text>
             </Pressable>
 
-            <Pressable onPress={() => onUseInTranslator(transcript)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "rgba(232,118,26,0.15)", borderRadius: 10, borderWidth: 1, borderColor: "#FE7725", paddingVertical: 12 }}>
+            <Pressable onPress={() => onUseInTranslator(translation || transcript)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "rgba(232,118,26,0.15)", borderRadius: 10, borderWidth: 1, borderColor: "#FE7725", paddingVertical: 12 }}>
               <Ionicons name="language-outline" size={18} color="#FE7725" />
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Use in Translator</Text>
             </Pressable>
