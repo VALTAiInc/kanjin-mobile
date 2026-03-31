@@ -14,7 +14,8 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
-import { translateAndSpeak, speakText } from "../utils/api";
+import { translateAndSpeak, speakText, VoiceOverrides } from "../utils/api";
+import Slider from "@react-native-community/slider";
 
 interface BatchLine { id: string; text: string; }
 interface BatchResult { id: string; status: "ok" | "error" | "pending"; error?: string; }
@@ -462,6 +463,11 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
   const [showTargetPicker, setShowTargetPicker] = useState(false);
   const [showSpeakPicker, setShowSpeakPicker] = useState(false);
   const singleSoundRef = useRef<Audio.Sound|null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const [voiceSpeed, setVoiceSpeed] = useState(1.0);
+  const [voiceStability, setVoiceStability] = useState(0.35);
+  const [voiceStyle, setVoiceStyle] = useState(0.25);
 
   const [batchMode, setBatchMode] = useState<"translate"|"speak">("translate");
   const [batchSourceLang, setBatchSourceLang] = useState("en");
@@ -482,13 +488,24 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
       .filter(Boolean) as BatchLine[];
   }
 
+  async function stopAudio() {
+    try {
+      if (singleSoundRef.current) { await singleSoundRef.current.stopAsync(); await singleSoundRef.current.unloadAsync(); singleSoundRef.current = null; }
+    } catch {}
+    setIsPlaying(false);
+  }
+
   async function playAudio(uri: string) {
     try {
-      if (singleSoundRef.current) { await singleSoundRef.current.unloadAsync(); singleSoundRef.current = null; }
+      await stopAudio();
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, allowsRecordingIOS: false });
       const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true, volume: 1.0 });
       singleSoundRef.current = sound;
-    } catch (e) { console.error("Playback error:", e); }
+      setIsPlaying(true);
+      sound.setOnPlaybackStatusUpdate((st: any) => {
+        if (st?.isLoaded && st?.didJustFinish) { setIsPlaying(false); sound.unloadAsync(); singleSoundRef.current = null; }
+      });
+    } catch (e) { console.error("Playback error:", e); setIsPlaying(false); }
   }
 
   const runSingle = useCallback(async () => {
@@ -505,13 +522,14 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
         audioUri = result.audioUri;
       } else {
         setSingleStatus({ msg: "Generating audio...", type: "active" });
-        audioUri = await speakText(text, speakLang);
+        const overrides: VoiceOverrides = speakLang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
+        audioUri = await speakText(text, speakLang, overrides);
       }
       setSingleAudioUri(audioUri);
       setSingleStatus({ msg: "Done — tap Play or Share", type: "success" });
       await playAudio(audioUri);
     } catch (err: any) { setSingleStatus({ msg: "Error: " + err.message, type: "error" }); }
-  }, [singleText, singleMode, sourceLang, targetLang, speakLang]);
+  }, [singleText, singleMode, sourceLang, targetLang, speakLang, voiceSpeed, voiceStability, voiceStyle]);
 
   async function shareSingleAudio() {
     if (!singleAudioUri) return;
@@ -540,7 +558,8 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
           const result = await translateAndSpeak(text, batchSourceLang, batchTargetLang);
           audioUri = result.audioUri;
         } else {
-          audioUri = await speakText(text, batchSpeakLang);
+          const overrides: VoiceOverrides = batchSpeakLang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
+          audioUri = await speakText(text, batchSpeakLang, overrides);
         }
         const dest = tempDir + `${id}.mp3`;
         await FileSystem.copyAsync({ from: audioUri, to: dest });
@@ -628,6 +647,27 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
               </View>
             )}
 
+            {singleMode === "speak" && speakLang === "ja" && (
+              <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>VOICE SETTINGS</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Speed</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.5} maximumValue={2.0} step={0.05} value={voiceSpeed} onValueChange={setVoiceSpeed} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceSpeed.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Stability</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.0} maximumValue={1.0} step={0.05} value={voiceStability} onValueChange={setVoiceStability} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceStability.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Style</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.0} maximumValue={1.0} step={0.05} value={voiceStyle} onValueChange={setVoiceStyle} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceStyle.toFixed(2)}</Text>
+                </View>
+              </View>
+            )}
+
             <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>{singleMode === "translate" ? "TEXT TO TRANSLATE" : "TEXT TO SPEAK"}</Text>
             <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 85, textAlignVertical: "top" }} multiline value={singleText} onChangeText={setSingleText}
               placeholder="Type or paste text here..." placeholderTextColor={c.textDim} maxLength={5000} />
@@ -649,10 +689,17 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
 
             {singleAudioUri && (
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <Pressable style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.surface, borderRadius: 8, borderWidth: 1, borderColor: c.border, paddingVertical: 10 }} onPress={() => playAudio(singleAudioUri)}>
-                  <Ionicons name="play" size={20} color={c.text} />
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: c.text }}>Play</Text>
-                </Pressable>
+                {isPlaying ? (
+                  <Pressable style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.red + "20", borderRadius: 8, borderWidth: 1, borderColor: c.red, paddingVertical: 10 }} onPress={stopAudio}>
+                    <Ionicons name="stop" size={20} color={c.red} />
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: c.red }}>Stop</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.surface, borderRadius: 8, borderWidth: 1, borderColor: c.border, paddingVertical: 10 }} onPress={() => playAudio(singleAudioUri)}>
+                    <Ionicons name="play" size={20} color={c.text} />
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: c.text }}>Play</Text>
+                  </Pressable>
+                )}
                 <Pressable style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.orangeDim, borderRadius: 8, borderWidth: 1, borderColor: c.orange, paddingVertical: 10 }} onPress={shareSingleAudio}>
                   <Ionicons name="share-outline" size={20} color={c.orange} />
                   <Text style={{ fontSize: 13, fontWeight: "600", color: c.orange }}>Share MP3</Text>
@@ -691,6 +738,27 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
               <View>
                 <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE LANGUAGE</Text>
                 <LangButton code={batchSpeakLang} onPress={() => setShowBatchSpeakPicker(true)} />
+              </View>
+            )}
+
+            {batchMode === "speak" && batchSpeakLang === "ja" && (
+              <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>VOICE SETTINGS</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Speed</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.5} maximumValue={2.0} step={0.05} value={voiceSpeed} onValueChange={setVoiceSpeed} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceSpeed.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Stability</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.0} maximumValue={1.0} step={0.05} value={voiceStability} onValueChange={setVoiceStability} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceStability.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Style</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.0} maximumValue={1.0} step={0.05} value={voiceStyle} onValueChange={setVoiceStyle} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceStyle.toFixed(2)}</Text>
+                </View>
               </View>
             )}
 

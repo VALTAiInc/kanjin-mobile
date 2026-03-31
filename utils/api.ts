@@ -62,7 +62,7 @@ async function cleanJapanesePunctuation(text: string): Promise<string> {
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 1024,
-        system: `You are a text prep assistant for Japanese text-to-speech. The input is English text that will be read aloud by a Japanese voice. Add natural punctuation to improve TTS delivery — use ? for questions, ! for exclamations, and ... for natural pauses. Do not translate. Do not change any words. Return ONLY the corrected text.`,
+        system: `You are a text prep assistant for Japanese text-to-speech. The input is English text that will be read aloud by a Japanese voice. Add natural punctuation to improve TTS delivery — use ? for questions and ... for natural pauses. Do not add exclamation marks. Never duplicate punctuation that already exists in the text. Do not translate. Do not change any words. Return ONLY the corrected text.`,
         messages: [{ role: "user", content: text }],
       }),
     });
@@ -74,19 +74,30 @@ async function cleanJapanesePunctuation(text: string): Promise<string> {
   }
 }
 
+export interface VoiceOverrides {
+  stability?: number;
+  similarity_boost?: number;
+  style?: number;
+  speed?: number;
+}
+
 /** Speak text as-is via ElevenLabs TTS (no translation). */
 export async function speakText(
   text: string,
   language: string,
+  overrides?: VoiceOverrides,
 ): Promise<string> {
   const voiceId = VOICE_IDS[language] || VOICE_IDS["en"];
   const isJapanese = language === "ja";
 
   const ttsText = isJapanese ? await cleanJapanesePunctuation(text) : text;
   const modelId = isJapanese ? "eleven_multilingual_v2" : "eleven_multilingual_v2";
-  const voiceSettings = isJapanese
-    ? { stability: 0.35, similarity_boost: 0.80, style: 0.50, use_speaker_boost: true }
+  const defaults = isJapanese
+    ? { stability: 0.35, similarity_boost: 0.80, style: 0.25, use_speaker_boost: true }
     : { stability: 0.5, similarity_boost: 1.0, style: 0.2, use_speaker_boost: true, speed: 1.0 };
+  const voiceSettings = overrides
+    ? { ...defaults, ...overrides, use_speaker_boost: true }
+    : defaults;
 
   const response = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_192`,
