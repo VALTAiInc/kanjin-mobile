@@ -3,9 +3,10 @@ import * as FileSystem from "expo-file-system/legacy";
 const API_BASE = "https://bridge-backend-production-b481.up.railway.app";
 
 const ELEVENLABS_API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY ?? "";
+const ANTHROPIC_API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? "";
 
 const VOICE_IDS: Record<string, string> = {
-  en: "EXAVITQu4vr4xnSDxMaL", ja: "T7yYq3WpB94yAuOXraRi",
+  en: "EXAVITQu4vr4xnSDxMaL", ja: "WQz3clzUdMqvBf0jswZQ",
   es: "AZnzlk1XvdvUeBnXmlld", fr: "MF3mGyEYCl7XYWbV9V6O",
   de: "ErXwobaYiN019PkySvjV", pt: "VR6AewLTigWG4xSOukaG",
   zh: "pNInz6obpgDQGcFmaJgB", ko: "pMsXgVXv3BLzUgSXRplE",
@@ -47,12 +48,52 @@ export async function translateAndSpeak(
   return { translation: data.translation, audioUri: fileUri };
 }
 
+/** Clean up Japanese punctuation for natural TTS output. */
+async function cleanJapanesePunctuation(text: string): Promise<string> {
+  if (!ANTHROPIC_API_KEY) return text;
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1024,
+        system: `You are a Japanese punctuation fixer. Fix the punctuation in the given Japanese text and return ONLY the corrected text — nothing else.
+Rules:
+- Use 。for sentence endings (never a period).
+- Use ？for questions (never ?).
+- Use ！for exclamations (never !).
+- Use 、for natural breath pauses mid-sentence.
+- Questions must end with ですか？ or か？ patterns where grammatically natural.
+- Do not change the words or meaning — only fix punctuation.`,
+        messages: [{ role: "user", content: text }],
+      }),
+    });
+    if (!res.ok) return text;
+    const data = await res.json();
+    return data.content?.[0]?.text?.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
 /** Speak text as-is via ElevenLabs TTS (no translation). */
 export async function speakText(
   text: string,
   language: string,
 ): Promise<string> {
   const voiceId = VOICE_IDS[language] || VOICE_IDS["en"];
+  const isJapanese = language === "ja";
+
+  const ttsText = isJapanese ? await cleanJapanesePunctuation(text) : text;
+  const modelId = isJapanese ? "eleven_multilingual_v2" : "eleven_multilingual_v2";
+  const voiceSettings = isJapanese
+    ? { stability: 0.35, similarity_boost: 0.80, style: 0.50, use_speaker_boost: true }
+    : { stability: 0.5, similarity_boost: 1.0, style: 0.2, use_speaker_boost: true, speed: 1.0 };
 
   const response = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_192`,
@@ -64,9 +105,9 @@ export async function speakText(
         Accept: "audio/mpeg",
       },
       body: JSON.stringify({
-        text,
-        model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.5, similarity_boost: 1.0, style: 0.2, use_speaker_boost: true, speed: 1.0 },
+        text: ttsText,
+        model_id: modelId,
+        voice_settings: voiceSettings,
       }),
     }
   );
