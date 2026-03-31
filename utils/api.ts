@@ -48,7 +48,7 @@ export async function translateAndSpeak(
   return { translation: data.translation, audioUri: fileUri };
 }
 
-/** Clean up Japanese punctuation for natural TTS output. */
+/** Prep text for Japanese TTS voice — add natural punctuation for better delivery. */
 async function cleanJapanesePunctuation(text: string): Promise<string> {
   if (!ANTHROPIC_API_KEY) return text;
   try {
@@ -62,14 +62,7 @@ async function cleanJapanesePunctuation(text: string): Promise<string> {
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 1024,
-        system: `You are a Japanese punctuation fixer. Fix the punctuation in the given Japanese text and return ONLY the corrected text — nothing else.
-Rules:
-- Use 。for sentence endings (never a period).
-- Use ？for questions (never ?).
-- Use ！for exclamations (never !).
-- Use 、for natural breath pauses mid-sentence.
-- Questions must end with ですか？ or か？ patterns where grammatically natural.
-- Do not change the words or meaning — only fix punctuation.`,
+        system: `You are a text prep assistant for Japanese text-to-speech. The input is English text that will be read aloud by a Japanese voice. Add natural punctuation to improve TTS delivery — use ? for questions, ! for exclamations, and ... for natural pauses. Do not translate. Do not change any words. Return ONLY the corrected text.`,
         messages: [{ role: "user", content: text }],
       }),
     });
