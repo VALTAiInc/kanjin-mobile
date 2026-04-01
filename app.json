@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.valt.bridge",
-      "buildNumber": "1",
+      "buildNumber": "4",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Bridge needs microphone access to record your voice for translation.",
         "ITSAppUsesNonExemptEncryption": false
