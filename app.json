@@ -40,11 +40,11 @@
       ],
       "expo-font"
     ],
-    "owner": "thevalt",
     "extra": {
       "eas": {
-        "projectId": "a6bcf79b-e04e-415a-842c-191393d108b7"
+        "projectId": "efeaa08d-fc1d-4d10-bcc7-e3bf39e8f366"
       }
-    }
+    },
+    "owner": "hurricanemusic"
   }
 }
