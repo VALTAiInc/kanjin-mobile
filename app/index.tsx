@@ -14,7 +14,7 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
-import { translateAndSpeak, speakText, VoiceOverrides } from "../utils/api";
+import { translateAndSpeak, translateAndSpeakWithMyVoice, speakText, VoiceOverrides } from "../utils/api";
 import { getMyVoice, MyVoice } from "../utils/voice-storage";
 import MyVoiceScreen from "./my-voice";
 import Slider from "@react-native-community/slider";
@@ -48,7 +48,7 @@ function LangPickerModal({ visible, selected, onSelect, onClose, myVoice }: {
   visible: boolean; selected: string; onSelect: (c: string) => void; onClose: () => void; myVoice?: MyVoice | null;
 }) {
   const { c } = useContext(ThemeCtx);
-  const listData = myVoice ? [...LANGUAGES, { code: "my-voice", label: `My Voice (${myVoice.name})`, flag: "\uD83C\uDFA4" }] : LANGUAGES;
+  const listData = myVoice ? [{ code: "my-voice", label: `My Voice (${myVoice.name})`, flag: "\uD83C\uDFA4" }, ...LANGUAGES] : LANGUAGES;
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -437,6 +437,7 @@ export default function AppEntry() {
   const [myVoice, setMyVoice] = useState<MyVoice | null>(null);
 
   useEffect(() => { getMyVoice().then(setMyVoice); }, []);
+  useEffect(() => { if (started) getMyVoice().then(setMyVoice); }, [started]);
 
   if (!started) {
     return (
@@ -538,13 +539,21 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
       let audioUri: string;
       if (singleMode === "translate") {
         setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
-        const result = await translateAndSpeak(text, sourceLang, targetLang);
+        let result: { translation: string; audioUri: string };
+        if (targetLang === "my-voice" && myVoice?.voiceId) {
+          const overrides = myVoice.settings ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style } : undefined;
+          result = await translateAndSpeakWithMyVoice(text, sourceLang, myVoice.voiceId, overrides);
+        } else {
+          result = await translateAndSpeak(text, sourceLang, targetLang);
+        }
         setSingleTranslation(result.translation);
         audioUri = result.audioUri;
       } else {
         setSingleStatus({ msg: "Generating audio...", type: "active" });
         const lang = speakLang === "my-voice" ? "en" : speakLang;
-        const overrides: VoiceOverrides = lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
+        const overrides: VoiceOverrides = speakLang === "my-voice" && myVoice?.settings
+          ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style }
+          : lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
         const customId = speakLang === "my-voice" ? myVoice?.voiceId : undefined;
         audioUri = await speakText(text, lang, overrides, customId);
       }
@@ -578,11 +587,19 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
       try {
         let audioUri: string;
         if (batchMode === "translate") {
-          const result = await translateAndSpeak(text, batchSourceLang, batchTargetLang);
+          let result: { translation: string; audioUri: string };
+          if (batchTargetLang === "my-voice" && myVoice?.voiceId) {
+            const overrides = myVoice.settings ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style } : undefined;
+            result = await translateAndSpeakWithMyVoice(text, batchSourceLang, myVoice.voiceId, overrides);
+          } else {
+            result = await translateAndSpeak(text, batchSourceLang, batchTargetLang);
+          }
           audioUri = result.audioUri;
         } else {
           const lang = batchSpeakLang === "my-voice" ? "en" : batchSpeakLang;
-          const overrides: VoiceOverrides = lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
+          const overrides: VoiceOverrides = batchSpeakLang === "my-voice" && myVoice?.settings
+            ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style }
+            : lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
           const customId = batchSpeakLang === "my-voice" ? myVoice?.voiceId : undefined;
           audioUri = await speakText(text, lang, overrides, customId);
         }
@@ -820,11 +837,11 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
         )}
       </ScrollView>
 
-      <LangPickerModal visible={showSourcePicker} selected={sourceLang} onSelect={setSourceLang} onClose={() => setShowSourcePicker(false)} />
-      <LangPickerModal visible={showTargetPicker} selected={targetLang} onSelect={setTargetLang} onClose={() => setShowTargetPicker(false)} />
+      <LangPickerModal visible={showSourcePicker} selected={sourceLang} onSelect={setSourceLang} onClose={() => setShowSourcePicker(false)} myVoice={myVoice} />
+      <LangPickerModal visible={showTargetPicker} selected={targetLang} onSelect={setTargetLang} onClose={() => setShowTargetPicker(false)} myVoice={myVoice} />
       <LangPickerModal visible={showSpeakPicker} selected={speakLang} onSelect={setSpeakLang} onClose={() => setShowSpeakPicker(false)} myVoice={myVoice} />
-      <LangPickerModal visible={showBatchSourcePicker} selected={batchSourceLang} onSelect={setBatchSourceLang} onClose={() => setShowBatchSourcePicker(false)} />
-      <LangPickerModal visible={showBatchTargetPicker} selected={batchTargetLang} onSelect={setBatchTargetLang} onClose={() => setShowBatchTargetPicker(false)} />
+      <LangPickerModal visible={showBatchSourcePicker} selected={batchSourceLang} onSelect={setBatchSourceLang} onClose={() => setShowBatchSourcePicker(false)} myVoice={myVoice} />
+      <LangPickerModal visible={showBatchTargetPicker} selected={batchTargetLang} onSelect={setBatchTargetLang} onClose={() => setShowBatchTargetPicker(false)} myVoice={myVoice} />
       <LangPickerModal visible={showBatchSpeakPicker} selected={batchSpeakLang} onSelect={setBatchSpeakLang} onClose={() => setShowBatchSpeakPicker(false)} myVoice={myVoice} />
     </View>
     </TouchableWithoutFeedback>

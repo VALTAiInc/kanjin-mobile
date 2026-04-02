@@ -2,13 +2,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const KEY = "my_voice";
 
+export interface MyVoiceSettings {
+  speed: number;
+  stability: number;
+  style: number;
+}
+
 export interface MyVoice {
   voiceId: string;
   name: string;
+  settings: MyVoiceSettings;
 }
 
-export async function saveMyVoice(voiceId: string, name: string): Promise<void> {
-  await AsyncStorage.setItem(KEY, JSON.stringify({ voiceId, name }));
+export async function saveMyVoice(voiceId: string, name: string, settings: MyVoiceSettings): Promise<void> {
+  await AsyncStorage.setItem(KEY, JSON.stringify({ voiceId, name, settings }));
 }
 
 export async function getMyVoice(): Promise<MyVoice | null> {

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, ScrollView, TextInput, Pressable, ActivityIndicator,
-  KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform, Alert,
+  KeyboardAvoidingView, Keyboard, Platform, Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -12,6 +12,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { COLORS } from "../constants/config";
 import { cloneVoice } from "../utils/api";
 import { saveMyVoice } from "../utils/voice-storage";
+import Slider from "@react-native-community/slider";
 
 const c = COLORS;
 
@@ -21,7 +22,7 @@ const QUALITY_OPTIONS = [
   { key: "best" as const, label: "Best", target: 180, desc: "3+ minutes" },
 ];
 
-const SCRIPT = `Hello! My name is [Name], and I'm recording this to create my own voice. Let's get started, shall we?
+const SCRIPT = `Hello! My name is your name, and I'm recording this to create my own voice. Let's get started, shall we?
 
 Have you ever wondered what it would be like to speak another language fluently? I think about that all the time. Imagine walking into a room and being able to talk to anyone... in any language. That's the goal, isn't it?
 
@@ -49,6 +50,10 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
   const [uploadedFile, setUploadedFile] = useState<{ uri: string; name: string } | null>(null);
   const [cloning, setCloning] = useState(false);
   const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Record or upload audio of your voice", type: "idle" });
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [voiceSpeed, setVoiceSpeed] = useState(1.0);
+  const [voiceStability, setVoiceStability] = useState(0.75);
+  const [voiceStyle, setVoiceStyle] = useState(0.35);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const targetSeconds = QUALITY_OPTIONS.find(q => q.key === quality)!.target;
@@ -129,7 +134,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     try {
       const voiceId = await cloneVoice(audioUri, name);
-      await saveMyVoice(voiceId, name);
+      await saveMyVoice(voiceId, name, { speed: voiceSpeed, stability: voiceStability, style: voiceStyle });
       setStatus({ msg: "Voice cloned successfully!", type: "success" });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Voice Cloned!", `"${name}" is now available in the voice picker.`, [
@@ -140,7 +145,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
     } finally {
       setCloning(false);
     }
-  }, [recordedUri, uploadedFile, voiceName, onBack]);
+  }, [recordedUri, uploadedFile, voiceName, onBack, voiceSpeed, voiceStability, voiceStyle]);
 
   const progress = Math.min(recordingSeconds / targetSeconds, 1);
   const audioReady = !!(recordedUri || uploadedFile);
@@ -148,7 +153,6 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={{ flex: 1 }}>
             {/* Header */}
             <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
@@ -181,7 +185,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
               </View>
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }} keyboardShouldPersistTaps="handled" onScrollBeginDrag={() => Keyboard.dismiss()}>
               {/* Voice Name — at top so keyboard doesn't push quality off screen */}
               <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginTop: 16 }}>VOICE NAME</Text>
               <TextInput
@@ -192,6 +196,34 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
                 placeholderTextColor={c.textDim}
                 maxLength={100}
               />
+
+              {/* Advanced Settings */}
+              <Pressable
+                onPress={() => setShowAdvanced(v => !v)}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 14 }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: c.textMuted }}>Voice Settings</Text>
+                <Ionicons name={showAdvanced ? "chevron-down" : "chevron-forward"} size={16} color={c.textMuted} />
+              </Pressable>
+              {showAdvanced && (
+                <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, marginTop: 6, gap: 6 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Speed</Text>
+                    <Slider style={{ flex: 1, height: 28 }} minimumValue={0.5} maximumValue={2.0} step={0.05} value={voiceSpeed} onValueChange={setVoiceSpeed} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                    <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceSpeed.toFixed(2)}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Stability</Text>
+                    <Slider style={{ flex: 1, height: 28 }} minimumValue={0.0} maximumValue={1.0} step={0.05} value={voiceStability} onValueChange={setVoiceStability} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                    <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceStability.toFixed(2)}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Style</Text>
+                    <Slider style={{ flex: 1, height: 28 }} minimumValue={0.0} maximumValue={1.0} step={0.05} value={voiceStyle} onValueChange={setVoiceStyle} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                    <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceStyle.toFixed(2)}</Text>
+                  </View>
+                </View>
+              )}
 
               {/* Recording Section */}
               <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginTop: 20 }}>RECORD YOUR VOICE</Text>
@@ -248,7 +280,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
                 <Text style={{ fontSize: 10, color: c.textMuted, alignSelf: "flex-start" }}>Read this aloud while recording</Text>
                 <View style={{ width: "100%", height: 160, backgroundColor: c.surface2, borderRadius: 8, padding: 10 }}>
                   <ScrollView showsVerticalScrollIndicator nestedScrollEnabled={true}>
-                    <Text style={{ fontSize: 13, color: c.text, lineHeight: 20 }} selectable>{voiceName.trim() ? SCRIPT.replace("[Name]", voiceName.trim()) : SCRIPT}</Text>
+                    <Text style={{ fontSize: 13, color: c.text, lineHeight: 20 }} selectable>{voiceName.trim() ? SCRIPT.replace("your name", voiceName.trim()) : SCRIPT}</Text>
                   </ScrollView>
                 </View>
               </View>
@@ -303,7 +335,6 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
 
             </ScrollView>
           </View>
-        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
