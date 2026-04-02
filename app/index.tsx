@@ -16,6 +16,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
 import { translateAndSpeak, translateAndSpeakWithMyVoice, speakText, VoiceOverrides } from "../utils/api";
 import { getMyVoice, MyVoice } from "../utils/voice-storage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import MyVoiceScreen from "./my-voice";
 import Slider from "@react-native-community/slider";
 
@@ -435,17 +436,47 @@ export default function AppEntry() {
   const [myVoiceMode, setMyVoiceMode] = useState(false);
   const [singleText, setSingleText] = useState("");
   const [myVoice, setMyVoice] = useState<MyVoice | null>(null);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const [disclaimerChecked, setDisclaimerChecked] = useState(false);
 
   useEffect(() => { getMyVoice().then(setMyVoice); }, []);
   useEffect(() => { if (started) getMyVoice().then(setMyVoice); }, [started]);
+  useEffect(() => {
+    AsyncStorage.getItem("disclaimer_accepted").then(val => {
+      setDisclaimerChecked(true);
+      if (val !== "true") setShowDisclaimer(true);
+    });
+  }, []);
+
+  const acceptDisclaimer = useCallback(async () => {
+    await AsyncStorage.setItem("disclaimer_accepted", "true");
+    setShowDisclaimer(false);
+  }, []);
 
   if (!started) {
     return (
+      <>
       <SplashScreen
         onTranslate={() => setStarted(true)}
         onTranscribe={() => { setStarted(true); setTranscribeMode(true); }}
         onMyVoice={() => { setStarted(true); setMyVoiceMode(true); }}
       />
+      {showDisclaimer && (
+        <Modal visible animationType="fade" transparent>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 }}>
+            <View style={{ backgroundColor: "#12121A", borderRadius: 16, padding: 24, width: "100%", maxWidth: 360, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" }}>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: "#FFFFFF", textAlign: "center", marginBottom: 16 }}>Disclaimer</Text>
+              <Text style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", lineHeight: 22, textAlign: "center", marginBottom: 24 }}>
+                Kanjin uses AI-powered voice cloning and translation. By using this app you agree that: recordings are processed securely, cloned voices are for personal use only, and VALT AI Inc. is not responsible for misuse of generated audio.
+              </Text>
+              <Pressable onPress={acceptDisclaimer} style={{ backgroundColor: "#FE7725", borderRadius: 12, paddingVertical: 14, alignItems: "center" }}>
+                <Text style={{ fontSize: 16, fontWeight: "800", color: "#FFFFFF", letterSpacing: 1 }}>I Agree</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+      )}
+      </>
     );
   }
 
@@ -686,6 +717,27 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
               <View>
                 <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE LANGUAGE</Text>
                 <LangButton code={speakLang} onPress={() => setShowSpeakPicker(true)} myVoiceName={myVoice?.name} />
+              </View>
+            )}
+
+            {singleMode === "translate" && targetLang === "my-voice" && (
+              <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>VOICE SETTINGS</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Speed</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.5} maximumValue={2.0} step={0.05} value={voiceSpeed} onValueChange={setVoiceSpeed} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceSpeed.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Stability</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.0} maximumValue={1.0} step={0.05} value={voiceStability} onValueChange={setVoiceStability} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceStability.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, width: 55 }}>Style</Text>
+                  <Slider style={{ flex: 1, height: 28 }} minimumValue={0.0} maximumValue={1.0} step={0.05} value={voiceStyle} onValueChange={setVoiceStyle} minimumTrackTintColor={c.orange} maximumTrackTintColor={c.border} thumbTintColor={c.orange} />
+                  <Text style={{ fontSize: 11, color: c.text, width: 32, textAlign: "right" }}>{voiceStyle.toFixed(2)}</Text>
+                </View>
               </View>
             )}
 
