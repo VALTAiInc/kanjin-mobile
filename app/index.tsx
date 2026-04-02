@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useContext, useMemo, createContext } from "react";
+import React, { useState, useRef, useCallback, useContext, useMemo, createContext, useEffect } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   ActivityIndicator, Modal, FlatList, TouchableOpacity,
@@ -15,6 +15,8 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
 import { translateAndSpeak, speakText, VoiceOverrides } from "../utils/api";
+import { getMyVoice, MyVoice } from "../utils/voice-storage";
+import MyVoiceScreen from "./my-voice";
 import Slider from "@react-native-community/slider";
 
 interface BatchLine { id: string; text: string; }
@@ -42,10 +44,11 @@ const LIGHT: ThemeColors = {
 
 const ThemeCtx = createContext<{ c: ThemeColors; isDark: boolean }>({ c: DARK, isDark: true });
 
-function LangPickerModal({ visible, selected, onSelect, onClose }: {
-  visible: boolean; selected: string; onSelect: (c: string) => void; onClose: () => void;
+function LangPickerModal({ visible, selected, onSelect, onClose, myVoice }: {
+  visible: boolean; selected: string; onSelect: (c: string) => void; onClose: () => void; myVoice?: MyVoice | null;
 }) {
   const { c } = useContext(ThemeCtx);
+  const listData = myVoice ? [...LANGUAGES, { code: "my-voice", label: `My Voice (${myVoice.name})`, flag: "\uD83C\uDFA4" }] : LANGUAGES;
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -56,7 +59,7 @@ function LangPickerModal({ visible, selected, onSelect, onClose }: {
           </Pressable>
         </View>
         <FlatList
-          data={LANGUAGES}
+          data={listData}
           keyExtractor={(item) => item.code}
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -76,9 +79,10 @@ function LangPickerModal({ visible, selected, onSelect, onClose }: {
   );
 }
 
-function LangButton({ code, onPress }: { code: string; onPress: () => void }) {
+function LangButton({ code, onPress, myVoiceName }: { code: string; onPress: () => void; myVoiceName?: string }) {
   const { c } = useContext(ThemeCtx);
-  const lang = LANGUAGES.find(l => l.code === code) ?? LANGUAGES[0];
+  const isMyVoice = code === "my-voice";
+  const lang = isMyVoice ? { code: "my-voice", label: `My Voice (${myVoiceName ?? ""})`, flag: "\uD83C\uDFA4" } : (LANGUAGES.find(l => l.code === code) ?? LANGUAGES[0]);
   return (
     <Pressable style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }} onPress={onPress}>
       <Text style={{ fontSize: 18 }}>{lang.flag}</Text>
@@ -101,7 +105,7 @@ function StatusPill({ msg, type }: { msg: string; type: "idle"|"active"|"success
   );
 }
 
-function SplashScreen({ onTranslate, onTranscribe }: { onTranslate: () => void; onTranscribe: () => void }) {
+function SplashScreen({ onTranslate, onTranscribe, onMyVoice }: { onTranslate: () => void; onTranscribe: () => void; onMyVoice: () => void }) {
   return (
     <View style={splashStyles.container}>
       <View style={splashStyles.content}>
@@ -128,6 +132,10 @@ function SplashScreen({ onTranslate, onTranscribe }: { onTranslate: () => void; 
             <Text style={splashStyles.transcribeBtnText}>Transcribe</Text>
           </Pressable>
         </View>
+        <Pressable style={splashStyles.myVoiceBtn} onPress={onMyVoice}>
+          <Ionicons name="mic" size={18} color="rgba(255,255,255,0.7)" />
+          <Text style={splashStyles.myVoiceBtnText}>Setup My Voice</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -147,6 +155,8 @@ const splashStyles = StyleSheet.create({
   transcribeBtn: { flex: 1, borderRadius: 14, paddingVertical: 16, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", backgroundColor: "transparent" },
   startBtnText: { fontSize: 16, fontWeight: "800", color: "#FFFFFF", letterSpacing: 1.2 },
   transcribeBtnText: { fontSize: 16, fontWeight: "800", color: "rgba(255,255,255,0.7)", letterSpacing: 1.2 },
+  myVoiceBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 12, borderRadius: 14, paddingVertical: 16, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", backgroundColor: "transparent" },
+  myVoiceBtnText: { fontSize: 16, fontWeight: "800", color: "rgba(255,255,255,0.7)", letterSpacing: 1.2 },
 });
 
 function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; onUseInTranslator: (text: string) => void }) {
@@ -422,14 +432,25 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
 export default function AppEntry() {
   const [started, setStarted] = useState(false);
   const [transcribeMode, setTranscribeMode] = useState(false);
+  const [myVoiceMode, setMyVoiceMode] = useState(false);
   const [singleText, setSingleText] = useState("");
+  const [myVoice, setMyVoice] = useState<MyVoice | null>(null);
+
+  useEffect(() => { getMyVoice().then(setMyVoice); }, []);
 
   if (!started) {
     return (
       <SplashScreen
         onTranslate={() => setStarted(true)}
         onTranscribe={() => { setStarted(true); setTranscribeMode(true); }}
+        onMyVoice={() => { setStarted(true); setMyVoiceMode(true); }}
       />
+    );
+  }
+
+  if (myVoiceMode) {
+    return (
+      <MyVoiceScreen onBack={() => { setStarted(false); setMyVoiceMode(false); getMyVoice().then(setMyVoice); }} />
     );
   }
 
@@ -442,10 +463,10 @@ export default function AppEntry() {
     );
   }
 
-  return <HomeScreen singleText={singleText} setSingleText={setSingleText} onBack={() => setStarted(false)} />;
+  return <HomeScreen singleText={singleText} setSingleText={setSingleText} onBack={() => setStarted(false)} myVoice={myVoice} />;
 }
 
-function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string; setSingleText: (t: string) => void; onBack: () => void }) {
+function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText: string; setSingleText: (t: string) => void; onBack: () => void; myVoice: MyVoice | null }) {
   const [isDark, setIsDark] = useState(true);
   const c = isDark ? DARK : LIGHT;
   const theme = useMemo(() => ({ c, isDark }), [isDark]);
@@ -522,14 +543,16 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
         audioUri = result.audioUri;
       } else {
         setSingleStatus({ msg: "Generating audio...", type: "active" });
-        const overrides: VoiceOverrides = speakLang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
-        audioUri = await speakText(text, speakLang, overrides);
+        const lang = speakLang === "my-voice" ? "en" : speakLang;
+        const overrides: VoiceOverrides = lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
+        const customId = speakLang === "my-voice" ? myVoice?.voiceId : undefined;
+        audioUri = await speakText(text, lang, overrides, customId);
       }
       setSingleAudioUri(audioUri);
       setSingleStatus({ msg: "Done — tap Play or Share", type: "success" });
       await playAudio(audioUri);
     } catch (err: any) { setSingleStatus({ msg: "Error: " + err.message, type: "error" }); }
-  }, [singleText, singleMode, sourceLang, targetLang, speakLang, voiceSpeed, voiceStability, voiceStyle]);
+  }, [singleText, singleMode, sourceLang, targetLang, speakLang, voiceSpeed, voiceStability, voiceStyle, myVoice]);
 
   async function shareSingleAudio() {
     if (!singleAudioUri) return;
@@ -558,8 +581,10 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
           const result = await translateAndSpeak(text, batchSourceLang, batchTargetLang);
           audioUri = result.audioUri;
         } else {
-          const overrides: VoiceOverrides = batchSpeakLang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
-          audioUri = await speakText(text, batchSpeakLang, overrides);
+          const lang = batchSpeakLang === "my-voice" ? "en" : batchSpeakLang;
+          const overrides: VoiceOverrides = lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
+          const customId = batchSpeakLang === "my-voice" ? myVoice?.voiceId : undefined;
+          audioUri = await speakText(text, lang, overrides, customId);
         }
         const dest = tempDir + `${id}.mp3`;
         await FileSystem.copyAsync({ from: audioUri, to: dest });
@@ -643,7 +668,7 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
             ) : (
               <View>
                 <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE LANGUAGE</Text>
-                <LangButton code={speakLang} onPress={() => setShowSpeakPicker(true)} />
+                <LangButton code={speakLang} onPress={() => setShowSpeakPicker(true)} myVoiceName={myVoice?.name} />
               </View>
             )}
 
@@ -737,7 +762,7 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
             ) : (
               <View>
                 <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>VOICE LANGUAGE</Text>
-                <LangButton code={batchSpeakLang} onPress={() => setShowBatchSpeakPicker(true)} />
+                <LangButton code={batchSpeakLang} onPress={() => setShowBatchSpeakPicker(true)} myVoiceName={myVoice?.name} />
               </View>
             )}
 
@@ -797,10 +822,10 @@ function HomeScreen({ singleText, setSingleText, onBack }: { singleText: string;
 
       <LangPickerModal visible={showSourcePicker} selected={sourceLang} onSelect={setSourceLang} onClose={() => setShowSourcePicker(false)} />
       <LangPickerModal visible={showTargetPicker} selected={targetLang} onSelect={setTargetLang} onClose={() => setShowTargetPicker(false)} />
-      <LangPickerModal visible={showSpeakPicker} selected={speakLang} onSelect={setSpeakLang} onClose={() => setShowSpeakPicker(false)} />
+      <LangPickerModal visible={showSpeakPicker} selected={speakLang} onSelect={setSpeakLang} onClose={() => setShowSpeakPicker(false)} myVoice={myVoice} />
       <LangPickerModal visible={showBatchSourcePicker} selected={batchSourceLang} onSelect={setBatchSourceLang} onClose={() => setShowBatchSourcePicker(false)} />
       <LangPickerModal visible={showBatchTargetPicker} selected={batchTargetLang} onSelect={setBatchTargetLang} onClose={() => setShowBatchTargetPicker(false)} />
-      <LangPickerModal visible={showBatchSpeakPicker} selected={batchSpeakLang} onSelect={setBatchSpeakLang} onClose={() => setShowBatchSpeakPicker(false)} />
+      <LangPickerModal visible={showBatchSpeakPicker} selected={batchSpeakLang} onSelect={setBatchSpeakLang} onClose={() => setShowBatchSpeakPicker(false)} myVoice={myVoice} />
     </View>
     </TouchableWithoutFeedback>
     </KeyboardAvoidingView>

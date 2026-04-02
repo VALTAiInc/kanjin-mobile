@@ -74,6 +74,34 @@ async function cleanJapanesePunctuation(text: string): Promise<string> {
   }
 }
 
+/** Clone a voice via ElevenLabs instant voice cloning. */
+export async function cloneVoice(audioUri: string, name: string): Promise<string> {
+  const fileInfo = await FileSystem.getInfoAsync(audioUri);
+  if (!fileInfo.exists) throw new Error("Audio file not found");
+
+  const ext = audioUri.split(".").pop()?.toLowerCase() ?? "m4a";
+  const mimeMap: Record<string, string> = { m4a: "audio/mp4", mp3: "audio/mpeg", wav: "audio/wav" };
+  const mimeType = mimeMap[ext] ?? "audio/mp4";
+
+  const formData = new FormData();
+  formData.append("name", name);
+  formData.append("files", { uri: audioUri, name: `voice.${ext}`, type: mimeType } as any);
+
+  const response = await fetch("https://api.elevenlabs.io/v1/voices/add", {
+    method: "POST",
+    headers: { "xi-api-key": ELEVENLABS_API_KEY },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    throw new Error(`ElevenLabs clone error ${response.status}: ${errBody}`);
+  }
+
+  const data = await response.json();
+  return data.voice_id;
+}
+
 export interface VoiceOverrides {
   stability?: number;
   similarity_boost?: number;
@@ -86,8 +114,9 @@ export async function speakText(
   text: string,
   language: string,
   overrides?: VoiceOverrides,
+  customVoiceId?: string,
 ): Promise<string> {
-  const voiceId = VOICE_IDS[language] || VOICE_IDS["en"];
+  const voiceId = customVoiceId || VOICE_IDS[language] || VOICE_IDS["en"];
   const isJapanese = language === "ja";
 
   const ttsText = isJapanese ? await cleanJapanesePunctuation(text) : text;
