@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, ScrollView, TextInput, Pressable, ActivityIndicator,
-  KeyboardAvoidingView, Keyboard, Platform, Alert,
+  KeyboardAvoidingView, Keyboard, Platform, Alert, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -41,6 +41,7 @@ So what do we do next? We keep going. We don't stop. Not now, not ever. Because 
 Thank you for listening. That's it — short, simple, and hopefully exactly what we needed!`;
 
 export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
+  const [showIntro, setShowIntro] = useState(true);
   const [quality, setQuality] = useState<"good" | "better" | "best">("better");
   const [voiceName, setVoiceName] = useState("");
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -336,6 +337,21 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
             </ScrollView>
           </View>
       </KeyboardAvoidingView>
+      {showIntro && (
+        <Modal visible animationType="fade" transparent>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", alignItems: "center", paddingHorizontal: 24 }}>
+            <View style={{ backgroundColor: "#12121A", borderRadius: 16, padding: 24, width: "100%", maxWidth: 360, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" }}>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: "#FFFFFF", textAlign: "center", marginBottom: 16 }}>Clone Your Voice</Text>
+              <Text style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", lineHeight: 22, textAlign: "center", marginBottom: 24 }}>
+                Record yourself reading the script below or upload an existing audio file. ElevenLabs will create a digital clone of your voice that you can use anywhere in the app. The more audio you provide, the better the result.
+              </Text>
+              <Pressable onPress={() => setShowIntro(false)} style={{ backgroundColor: "#FE7725", borderRadius: 12, paddingVertical: 14, alignItems: "center" }}>
+                <Text style={{ fontSize: 16, fontWeight: "800", color: "#FFFFFF", letterSpacing: 1 }}>Ready to Record</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }

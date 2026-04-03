@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useContext, useMemo, createContex
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   ActivityIndicator, Modal, FlatList, TouchableOpacity,
-  KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform,
+  KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform, Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -82,12 +82,15 @@ function LangPickerModal({ visible, selected, onSelect, onClose, myVoice }: {
 
 function LangButton({ code, onPress, myVoiceName }: { code: string; onPress: () => void; myVoiceName?: string }) {
   const { c } = useContext(ThemeCtx);
+  const isEmpty = !code;
   const isMyVoice = code === "my-voice";
-  const lang = isMyVoice ? { code: "my-voice", label: `My Voice (${myVoiceName ?? ""})`, flag: "\uD83C\uDFA4" } : (LANGUAGES.find(l => l.code === code) ?? LANGUAGES[0]);
+  const lang = isEmpty ? { code: "", label: "Language", flag: "" }
+    : isMyVoice ? { code: "my-voice", label: `My Voice (${myVoiceName ?? ""})`, flag: "\uD83C\uDFA4" }
+    : (LANGUAGES.find(l => l.code === code) ?? LANGUAGES[0]);
   return (
     <Pressable style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }} onPress={onPress}>
-      <Text style={{ fontSize: 18 }}>{lang.flag}</Text>
-      <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: c.text }}>{lang.label}</Text>
+      {!isEmpty && <Text style={{ fontSize: 18 }}>{lang.flag}</Text>}
+      <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: isEmpty ? c.textMuted : c.text }}>{lang.label}</Text>
       <Ionicons name="chevron-down" size={14} color={c.textMuted} />
     </Pressable>
   );
@@ -135,7 +138,7 @@ function SplashScreen({ onTranslate, onTranscribe, onMyVoice }: { onTranslate: (
         </View>
         <Pressable style={splashStyles.myVoiceBtn} onPress={onMyVoice}>
           <Ionicons name="mic" size={18} color="rgba(255,255,255,0.7)" />
-          <Text style={splashStyles.myVoiceBtnText}>Setup My Voice</Text>
+          <Text style={splashStyles.myVoiceBtnText}>Clone Your Voice</Text>
         </Pressable>
       </View>
     </View>
@@ -442,14 +445,14 @@ export default function AppEntry() {
   useEffect(() => { getMyVoice().then(setMyVoice); }, []);
   useEffect(() => { if (started) getMyVoice().then(setMyVoice); }, [started]);
   useEffect(() => {
-    AsyncStorage.getItem("disclaimer_accepted").then(val => {
+    AsyncStorage.getItem("disclaimer_accepted_v2").then(val => {
       setDisclaimerChecked(true);
       if (val !== "true") setShowDisclaimer(true);
     });
   }, []);
 
   const acceptDisclaimer = useCallback(async () => {
-    await AsyncStorage.setItem("disclaimer_accepted", "true");
+    await AsyncStorage.setItem("disclaimer_accepted_v2", "true");
     setShowDisclaimer(false);
   }, []);
 
@@ -507,7 +510,7 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
 
   const [singleMode, setSingleMode] = useState<"translate"|"speak">("translate");
   const [sourceLang, setSourceLang] = useState("en");
-  const [targetLang, setTargetLang] = useState("ja");
+  const [targetLang, setTargetLang] = useState("");
   const [speakLang, setSpeakLang] = useState("ja");
   const [singleTranslation, setSingleTranslation] = useState("");
   const [singleStatus, setSingleStatus] = useState<{msg:string;type:"idle"|"active"|"success"|"error"}>({ msg: "Paste text and hit Generate", type: "idle" });
@@ -569,6 +572,7 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
     try {
       let audioUri: string;
       if (singleMode === "translate") {
+        if (!targetLang) { Alert.alert("No Target Language", "Please select a target language first."); return; }
         setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
         let result: { translation: string; audioUri: string };
         if (targetLang === "my-voice" && myVoice?.voiceId) {
@@ -720,7 +724,7 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
               </View>
             )}
 
-            {singleMode === "translate" && targetLang === "my-voice" && (
+            {singleMode === "translate" && targetLang !== "" && (
               <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 6 }}>
                 <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>VOICE SETTINGS</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -741,7 +745,7 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
               </View>
             )}
 
-            {singleMode === "speak" && speakLang === "ja" && (
+            {singleMode === "speak" && (
               <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 6 }}>
                 <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>VOICE SETTINGS</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -835,7 +839,7 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
               </View>
             )}
 
-            {batchMode === "speak" && batchSpeakLang === "ja" && (
+            {batchMode === "speak" && (
               <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 6 }}>
                 <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>VOICE SETTINGS</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
