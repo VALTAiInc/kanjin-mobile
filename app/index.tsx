@@ -343,7 +343,7 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
         <View style={{ width: 60 }} />
       </View>
 
-      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
         {/* Audio Language selector */}
         <View style={{ marginTop: 16, gap: 4 }}>
           <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>AUDIO LANGUAGE</Text>

@@ -38,7 +38,13 @@
           "microphonePermission": "Bridge needs microphone access to record your voice for translation."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photoLibraryUsageDescription": "Kanjin needs access to your photo library to upload videos for transcription."
+        }
+      ]
     ],
     "extra": {
       "eas": {
