@@ -173,6 +173,7 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
   const [transcript, setTranscript] = useState("");
   const [translation, setTranslation] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Tap the mic to record", type: "idle" });
   const scrollRef = useRef<ScrollView>(null);
 
@@ -259,6 +260,58 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
       setStatus({ msg: "Error: " + e.message, type: "error" });
     }
   }, [sendToTranscribe]);
+
+  const pickVideoAndTranscribe = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["video/mp4", "video/quicktime", "video/*"],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      const ext = asset.name.split(".").pop()?.toLowerCase() ?? "mp4";
+      const mimeMap: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime" };
+      setFileName(asset.name);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await sendToTranscribe(asset.uri, asset.name, mimeMap[ext] ?? asset.mimeType ?? "video/mp4");
+    } catch (e: any) {
+      setStatus({ msg: "Error: " + e.message, type: "error" });
+    }
+  }, [sendToTranscribe]);
+
+  const transcribeYoutube = useCallback(async () => {
+    const url = youtubeUrl.trim();
+    if (!url) { setStatus({ msg: "Please paste a YouTube URL", type: "error" }); return; }
+    setStatus({ msg: "Fetching YouTube captions...", type: "active" });
+    setTranscript("");
+    setTranslation("");
+    setFileName(null);
+    try {
+      const response = await fetch("https://bridge-backend-production-b481.up.railway.app/api/transcribe-youtube", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ youtubeUrl: url }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: `Server error ${response.status}` }));
+        throw new Error(errData.error || `Server error ${response.status}`);
+      }
+      const data = await response.json();
+      const text = data.transcript ?? "";
+      setTranscript(text);
+
+      if (translateTo !== "none" && text) {
+        setStatus({ msg: "Translating...", type: "active" });
+        const result = await translateAndSpeak(text, audioLang, translateTo);
+        setTranslation(result.translation);
+      }
+
+      setStatus({ msg: "Done", type: "success" });
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300);
+    } catch (e: any) {
+      setStatus({ msg: e.message, type: "error" });
+    }
+  }, [youtubeUrl, audioLang, translateTo]);
 
   const copyAll = useCallback(async () => {
     const text = translation ? `Transcript:\n${transcript}\n\nTranslation:\n${translation}` : transcript;
@@ -348,6 +401,46 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
             <Ionicons name="cloud-upload-outline" size={18} color="rgba(255,255,255,0.6)" />
             <Text style={{ fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.6)" }}>Upload audio file</Text>
           </Pressable>
+          <View style={{ height: 8 }} />
+          <Pressable
+            onPress={pickVideoAndTranscribe}
+            style={({ pressed }) => ({
+              flexDirection: "row", alignItems: "center", gap: 8,
+              paddingHorizontal: 20, paddingVertical: 10,
+              borderRadius: 20, borderWidth: 1,
+              borderColor: pressed ? "#FE7725" : "rgba(255,255,255,0.2)",
+              backgroundColor: pressed ? "rgba(254,119,37,0.1)" : "transparent",
+            })}
+          >
+            <Ionicons name="videocam-outline" size={18} color="rgba(255,255,255,0.6)" />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.6)" }}>Upload video file</Text>
+          </Pressable>
+        </View>
+
+        {/* YouTube URL */}
+        <View style={{ marginBottom: 16, gap: 6 }}>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>YOUTUBE URL</Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TextInput
+              style={{ flex: 1, backgroundColor: "#12121A", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", borderRadius: 8, color: "#FFFFFF", fontSize: 13, paddingHorizontal: 10, paddingVertical: 8 }}
+              value={youtubeUrl}
+              onChangeText={setYoutubeUrl}
+              placeholder="https://youtube.com/watch?v=..."
+              placeholderTextColor="rgba(255,255,255,0.18)"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable
+              onPress={transcribeYoutube}
+              style={({ pressed }) => ({
+                backgroundColor: pressed ? "#FE7725" : "rgba(254,119,37,0.15)",
+                borderRadius: 8, paddingHorizontal: 12, justifyContent: "center",
+                borderWidth: 1, borderColor: "#FE7725",
+              })}
+            >
+              <Ionicons name="logo-youtube" size={20} color="#FE7725" />
+            </Pressable>
+          </View>
         </View>
 
         {/* Status */}
