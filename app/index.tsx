@@ -12,6 +12,7 @@ import { Audio } from "expo-av";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS, LANGUAGES } from "../constants/config";
 import { translateAndSpeak, translateAndSpeakWithMyVoice, speakText, VoiceOverrides } from "../utils/api";
@@ -263,17 +264,21 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
 
   const pickVideoAndTranscribe = useCallback(async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ["video/mp4", "video/quicktime", "video/*"],
-        copyToCacheDirectory: true,
+      const { status: permStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permStatus !== "granted") { setStatus({ msg: "Photo library permission denied", type: "error" }); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["videos"],
+        quality: 1,
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
-      const ext = asset.name.split(".").pop()?.toLowerCase() ?? "mp4";
+      const uri = asset.uri;
+      const name = uri.split("/").pop() ?? "video.mp4";
+      const ext = name.split(".").pop()?.toLowerCase() ?? "mp4";
       const mimeMap: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime" };
-      setFileName(asset.name);
+      setFileName(name);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await sendToTranscribe(asset.uri, asset.name, mimeMap[ext] ?? asset.mimeType ?? "video/mp4");
+      await sendToTranscribe(uri, name, mimeMap[ext] ?? "video/mp4");
     } catch (e: any) {
       setStatus({ msg: "Error: " + e.message, type: "error" });
     }
@@ -429,6 +434,8 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
               placeholderTextColor="rgba(255,255,255,0.18)"
               autoCapitalize="none"
               autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={transcribeYoutube}
             />
             <Pressable
               onPress={transcribeYoutube}
