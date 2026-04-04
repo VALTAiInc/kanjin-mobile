@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.valt.kanjin",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Bridge needs microphone access to record your voice for translation.",
         "ITSAppUsesNonExemptEncryption": false
