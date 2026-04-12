@@ -116,6 +116,39 @@ function showError(title: string, body: string) {
   Alert.alert(title, body);
 }
 
+/** Detect language from Unicode character ranges. Returns a language code or null. */
+function detectLanguageFromText(text: string): string | null {
+  // Count characters in each script range
+  let ja = 0, zh = 0, ko = 0, ar = 0, hi = 0, ru = 0, latin = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp >= 0x3040 && cp <= 0x309F) ja++; // Hiragana
+    else if (cp >= 0x30A0 && cp <= 0x30FF) ja++; // Katakana
+    else if (cp >= 0x4E00 && cp <= 0x9FFF) zh++; // CJK Unified (shared with Japanese kanji)
+    else if (cp >= 0xAC00 && cp <= 0xD7AF) ko++; // Korean Hangul
+    else if (cp >= 0x0600 && cp <= 0x06FF) ar++; // Arabic
+    else if (cp >= 0x0900 && cp <= 0x097F) hi++; // Devanagari (Hindi)
+    else if (cp >= 0x0400 && cp <= 0x04FF) ru++; // Cyrillic (Russian)
+    else if ((cp >= 0x0041 && cp <= 0x007A) || (cp >= 0x00C0 && cp <= 0x024F)) latin++;
+  }
+  const total = ja + zh + ko + ar + hi + ru + latin;
+  if (total < 3) return null; // too short to detect
+  // Japanese: has hiragana/katakana (even if also has kanji)
+  if (ja > 0) return "ja";
+  // Korean
+  if (ko > 0) return "ko";
+  // Chinese: CJK without Japanese kana
+  if (zh > 0) return "zh";
+  // Arabic
+  if (ar > 0) return "ar";
+  // Hindi
+  if (hi > 0) return "hi";
+  // Russian
+  if (ru > 0) return "ru";
+  // Latin scripts — leave as-is (could be many languages)
+  return null;
+}
+
 function SplashScreen({ onTranslate, onTranscribe, onMyVoice }: { onTranslate: () => void; onTranscribe: () => void; onMyVoice: () => void }) {
   return (
     <View style={splashStyles.container}>
@@ -170,6 +203,8 @@ const splashStyles = StyleSheet.create({
   myVoiceBtnText: { fontSize: 16, fontWeight: "800", color: "rgba(255,255,255,0.7)", letterSpacing: 1.2 },
 });
 
+const TRANSCRIBE_STORAGE_KEY = "last_transcription";
+
 function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; onUseInTranslator: (text: string) => void }) {
   const [audioLang, setAudioLang] = useState("en");
   const [translateTo, setTranslateTo] = useState("none");
@@ -184,22 +219,33 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
   const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Tap the mic to record", type: "idle" });
   const scrollRef = useRef<ScrollView>(null);
 
-  const clearTranscribeState = useCallback(() => {
-    setTranscript("");
+  // Restore last transcription on mount
+  useEffect(() => {
+    AsyncStorage.getItem(TRANSCRIBE_STORAGE_KEY).then(raw => {
+      if (!raw) return;
+      try {
+        const saved = JSON.parse(raw);
+        if (saved.transcript) setTranscript(saved.transcript);
+        if (saved.translation) setTranslation(saved.translation);
+        if (saved.transcript) setStatus({ msg: "Previous transcription restored", type: "success" });
+      } catch {}
+    });
+  }, []);
+
+  const clearTranscribeOutput = useCallback(() => {
     setTranslation("");
-    setFileName(null);
     setStatus({ msg: "Tap the mic to record", type: "idle" });
   }, []);
 
   const handleAudioLangChange = useCallback((code: string) => {
     setAudioLang(code);
-    clearTranscribeState();
-  }, [clearTranscribeState]);
+    clearTranscribeOutput();
+  }, [clearTranscribeOutput]);
 
   const handleTranslateToChange = useCallback((code: string) => {
     setTranslateTo(code);
-    clearTranscribeState();
-  }, [clearTranscribeState]);
+    clearTranscribeOutput();
+  }, [clearTranscribeOutput]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -239,11 +285,16 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
       const text = data.transcript ?? data.text ?? "";
       setTranscript(text);
 
+      let translationText = "";
       if (translateTo !== "none" && text) {
         setStatus({ msg: "Translating...", type: "active" });
         const result = await translateAndSpeak(text, audioLang, translateTo);
-        setTranslation(result.translation);
+        translationText = result.translation;
+        setTranslation(translationText);
       }
+
+      // Persist to AsyncStorage
+      AsyncStorage.setItem(TRANSCRIBE_STORAGE_KEY, JSON.stringify({ transcript: text, translation: translationText })).catch(() => {});
 
       setStatus({ msg: "Done", type: "success" });
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300);
@@ -340,11 +391,16 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
       const text = data.transcript ?? "";
       setTranscript(text);
 
+      let translationText = "";
       if (translateTo !== "none" && text) {
         setStatus({ msg: "Translating...", type: "active" });
         const result = await translateAndSpeak(text, audioLang, translateTo);
-        setTranslation(result.translation);
+        translationText = result.translation;
+        setTranslation(translationText);
       }
+
+      // Persist to AsyncStorage
+      AsyncStorage.setItem(TRANSCRIBE_STORAGE_KEY, JSON.stringify({ transcript: text, translation: translationText })).catch(() => {});
 
       setStatus({ msg: "Done", type: "success" });
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300);
@@ -369,6 +425,9 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#0A0A0F" }} edges={["top"]}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <View style={{ flex: 1 }}>
       {/* Header */}
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
         <Pressable onPress={onBack} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -524,6 +583,11 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Copy</Text>
             </Pressable>
 
+            <Pressable onPress={shareAll} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#12121A", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingVertical: 12 }}>
+              <Ionicons name="save-outline" size={18} color="#FE7725" />
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Save to Files</Text>
+            </Pressable>
+
             <Pressable onPress={() => onUseInTranslator(translation || transcript)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "rgba(232,118,26,0.15)", borderRadius: 10, borderWidth: 1, borderColor: "#FE7725", paddingVertical: 12 }}>
               <Ionicons name="language-outline" size={18} color="#FE7725" />
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Use in Translator</Text>
@@ -565,6 +629,9 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
           />
         </View>
       </Modal>
+    </View>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -686,23 +753,33 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
   const [showBatchTargetPicker, setShowBatchTargetPicker] = useState(false);
   const [showBatchSpeakPicker, setShowBatchSpeakPicker] = useState(false);
 
-  const clearSingleState = useCallback(() => {
-    setSingleText(""); setSingleTranslation(""); setSingleAudioUri(null);
+  const clearSingleOutput = useCallback(() => {
+    setSingleTranslation(""); setSingleAudioUri(null);
     setSingleStatus({ msg: "Paste text and hit Generate", type: "idle" });
   }, []);
 
-  const handleSourceLangChange = useCallback((code: string) => { setSourceLang(code); clearSingleState(); }, [clearSingleState]);
-  const handleTargetLangChange = useCallback((code: string) => { setTargetLang(code); clearSingleState(); }, [clearSingleState]);
-  const handleSpeakLangChange = useCallback((code: string) => { setSpeakLang(code); clearSingleState(); }, [clearSingleState]);
+  const handleSourceLangChange = useCallback((code: string) => { setSourceLang(code); clearSingleOutput(); }, [clearSingleOutput]);
+  const handleTargetLangChange = useCallback((code: string) => { setTargetLang(code); clearSingleOutput(); }, [clearSingleOutput]);
+  const handleSpeakLangChange = useCallback((code: string) => { setSpeakLang(code); clearSingleOutput(); }, [clearSingleOutput]);
 
-  const clearBatchState = useCallback(() => {
-    setBatchText(""); setBatchResults([]);
+  const clearBatchOutput = useCallback(() => {
+    setBatchResults([]);
     setBatchStatus({ msg: "Paste script, hit Generate", type: "idle" });
   }, []);
 
-  const handleBatchSourceLangChange = useCallback((code: string) => { setBatchSourceLang(code); clearBatchState(); }, [clearBatchState]);
-  const handleBatchTargetLangChange = useCallback((code: string) => { setBatchTargetLang(code); clearBatchState(); }, [clearBatchState]);
-  const handleBatchSpeakLangChange = useCallback((code: string) => { setBatchSpeakLang(code); clearBatchState(); }, [clearBatchState]);
+  const handleBatchSourceLangChange = useCallback((code: string) => { setBatchSourceLang(code); clearBatchOutput(); }, [clearBatchOutput]);
+  const handleBatchTargetLangChange = useCallback((code: string) => { setBatchTargetLang(code); clearBatchOutput(); }, [clearBatchOutput]);
+  const handleBatchSpeakLangChange = useCallback((code: string) => { setBatchSpeakLang(code); clearBatchOutput(); }, [clearBatchOutput]);
+
+  const handleSingleTextChange = useCallback((text: string) => {
+    setSingleText(text);
+    if (singleMode === "translate" && text.length >= 3) {
+      const detected = detectLanguageFromText(text);
+      if (detected && detected !== sourceLangRef.current) {
+        setSourceLang(detected);
+      }
+    }
+  }, [singleMode]);
 
   function parseLines(raw: string): BatchLine[] {
     const pattern = /^(\d+(?:-\d+)+)\s*:\s*(.+)$/;
@@ -749,8 +826,12 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
         setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
         let result: { translation: string; audioUri: string };
         if (curTargetLang === "my-voice" && myVoice?.voiceId) {
+          console.log("[MyVoice] Using cloned voiceId:", myVoice.voiceId, "name:", myVoice.name);
           const overrides = myVoice.settings ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style } : undefined;
           result = await translateAndSpeakWithMyVoice(text, curSourceLang, myVoice.voiceId, overrides);
+        } else if (curTargetLang === "my-voice" && !myVoice?.voiceId) {
+          Alert.alert("No Voice Cloned", "Please clone your voice first from the main menu.");
+          return;
         } else {
           result = await translateAndSpeak(text, curSourceLang, curTargetLang);
         }
@@ -758,6 +839,11 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
         audioUri = result.audioUri;
       } else {
         setSingleStatus({ msg: "Generating audio...", type: "active" });
+        if (curSpeakLang === "my-voice" && !myVoice?.voiceId) {
+          Alert.alert("No Voice Cloned", "Please clone your voice first from the main menu.");
+          return;
+        }
+        if (curSpeakLang === "my-voice") console.log("[MyVoice] Speaking with cloned voiceId:", myVoice!.voiceId, "name:", myVoice!.name);
         const lang = curSpeakLang === "my-voice" ? "en" : curSpeakLang;
         const overrides: VoiceOverrides = curSpeakLang === "my-voice" && myVoice?.settings
           ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style }
@@ -892,14 +978,14 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
               <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>FROM</Text>
-                  <LangButton code={sourceLang} onPress={() => setShowSourcePicker(true)} />
+                  <LangButton code={sourceLang} onPress={() => setShowSourcePicker(true)} myVoiceName={myVoice?.name} />
                 </View>
                 <Pressable style={{ width: 34, height: 34, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 1 }} onPress={() => { const t = sourceLang; setSourceLang(targetLang); setTargetLang(t); }}>
                   <Text style={{ fontSize: 16, color: c.textMuted }}>⇄</Text>
                 </Pressable>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>TO</Text>
-                  <LangButton code={targetLang} onPress={() => setShowTargetPicker(true)} />
+                  <LangButton code={targetLang} onPress={() => setShowTargetPicker(true)} myVoiceName={myVoice?.name} />
                 </View>
               </View>
             ) : (
@@ -952,7 +1038,7 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
             )}
 
             <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>{singleMode === "translate" ? "TEXT TO TRANSLATE" : "TEXT TO SPEAK"}</Text>
-            <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 85, textAlignVertical: "top" }} multiline value={singleText} onChangeText={setSingleText}
+            <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 85, textAlignVertical: "top" }} multiline value={singleText} onChangeText={handleSingleTextChange}
               placeholder="Type or paste text here..." placeholderTextColor={c.textDim} maxLength={5000} />
             <Text style={{ textAlign: "right", fontSize: 10, color: c.textDim, marginTop: -6 }}>{singleText.length} / 5000</Text>
 
@@ -1007,14 +1093,14 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
               <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>FROM</Text>
-                  <LangButton code={batchSourceLang} onPress={() => setShowBatchSourcePicker(true)} />
+                  <LangButton code={batchSourceLang} onPress={() => setShowBatchSourcePicker(true)} myVoiceName={myVoice?.name} />
                 </View>
                 <Pressable style={{ width: 34, height: 34, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 1 }} onPress={() => { const t = batchSourceLang; setBatchSourceLang(batchTargetLang); setBatchTargetLang(t); }}>
                   <Text style={{ fontSize: 16, color: c.textMuted }}>⇄</Text>
                 </Pressable>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, letterSpacing: 0.8 }}>TO</Text>
-                  <LangButton code={batchTargetLang} onPress={() => setShowBatchTargetPicker(true)} />
+                  <LangButton code={batchTargetLang} onPress={() => setShowBatchTargetPicker(true)} myVoiceName={myVoice?.name} />
                 </View>
               </View>
             ) : (

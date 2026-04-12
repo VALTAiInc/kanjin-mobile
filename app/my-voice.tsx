@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, ScrollView, TextInput, Pressable, ActivityIndicator,
-  KeyboardAvoidingView, Keyboard, Platform, Alert, Modal,
+  KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform, Alert, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -158,6 +158,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={{ flex: 1 }}>
             {/* Header */}
             <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
@@ -342,6 +343,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
 
             </ScrollView>
           </View>
+      </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
       {showIntro && (
         <Modal visible animationType="fade" transparent>
@@ -349,7 +351,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
             <View style={{ backgroundColor: "#12121A", borderRadius: 16, padding: 24, width: "100%", maxWidth: 360, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" }}>
               <Text style={{ fontSize: 18, fontWeight: "800", color: "#FFFFFF", textAlign: "center", marginBottom: 16 }}>Clone Your Voice</Text>
               <Text style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", lineHeight: 22, textAlign: "center", marginBottom: 24 }}>
-                Record yourself reading the script below or upload an existing audio file. ElevenLabs will create a digital clone of your voice that you can use anywhere in the app. The more audio you provide, the better the result.
+                Record yourself reading the script below or upload an existing audio file. VALT AI will create a digital clone of your voice that you can use anywhere in the app. The more audio you provide, the better the result.
               </Text>
               <Pressable onPress={() => setShowIntro(false)} style={{ backgroundColor: "#FE7725", borderRadius: 12, paddingVertical: 14, alignItems: "center" }}>
                 <Text style={{ fontSize: 16, fontWeight: "800", color: "#FFFFFF", letterSpacing: 1 }}>Ready to Record</Text>
