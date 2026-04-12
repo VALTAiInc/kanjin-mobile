@@ -250,9 +250,13 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
 
   const startRecording = useCallback(async () => {
     try {
+      const existing = await Audio.getPermissionsAsync();
+      const wasAlreadyGranted = existing.granted;
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { granted } = await Audio.requestPermissionsAsync();
       if (!granted) { showError("Microphone Access Needed", "Please allow microphone access in Settings to record audio."); return; }
+      // If permission was just granted for the first time, give iOS time to set up audio hardware
+      if (!wasAlreadyGranted) await new Promise(r => setTimeout(r, 300));
       const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       setRecording(rec);
       setIsRecording(true);
