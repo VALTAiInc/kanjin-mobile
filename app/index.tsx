@@ -553,9 +553,14 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
           <View style={{ marginTop: 16, backgroundColor: "#12121A", borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", padding: 14, gap: 10 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSCRIPT</Text>
-              <Pressable onPress={async () => { await Clipboard.setStringAsync(transcript); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }} hitSlop={8}>
-                <Ionicons name="copy-outline" size={16} color="rgba(255,255,255,0.45)" />
-              </Pressable>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Pressable onPress={() => { setTranscript(""); setTranslation(""); setFileName(null); setStatus({ msg: "Tap the mic to record", type: "idle" }); AsyncStorage.removeItem(TRANSCRIBE_STORAGE_KEY).catch(() => {}); }} hitSlop={8}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.30)" }}>Clear</Text>
+                </Pressable>
+                <Pressable onPress={async () => { await Clipboard.setStringAsync(transcript); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }} hitSlop={8}>
+                  <Ionicons name="copy-outline" size={16} color="rgba(255,255,255,0.45)" />
+                </Pressable>
+              </View>
             </View>
             {fileName && (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
