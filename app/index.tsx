@@ -1049,12 +1049,14 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
               placeholder="Type or paste text here..." placeholderTextColor={c.textDim} maxLength={5000} />
             <Text style={{ textAlign: "right", fontSize: 10, color: c.textDim, marginTop: -6 }}>{singleText.length} / 5000</Text>
 
+            {!(singleStatus.type === "idle" && singleStatus.msg === "Paste text and hit Generate") && (
+              <StatusPill msg={singleStatus.msg} type={singleStatus.type} />
+            )}
+
             <Pressable style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.orange, borderRadius: 10, paddingVertical: 12 }} onPress={runSingle}>
               <Ionicons name="flash" size={18} color="#fff" />
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>{singleMode === "translate" ? "Translate + Generate Audio" : "Generate Audio"}</Text>
             </Pressable>
-
-            <StatusPill msg={singleStatus.msg} type={singleStatus.type} />
 
             {singleTranslation !== "" && singleMode === "translate" && (
               <View style={{ backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, padding: 10, gap: 6 }}>
