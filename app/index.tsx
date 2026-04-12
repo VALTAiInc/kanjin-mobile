@@ -14,6 +14,7 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { COLORS, LANGUAGES } from "../constants/config";
 import { translateAndSpeak, translateAndSpeakWithMyVoice, speakText, VoiceOverrides } from "../utils/api";
 import { getMyVoice, MyVoice } from "../utils/voice-storage";
@@ -101,6 +102,7 @@ function LangButton({ code, onPress, myVoiceName }: { code: string; onPress: () 
 
 function StatusPill({ msg, type }: { msg: string; type: "idle"|"active"|"success"|"error" }) {
   const { c } = useContext(ThemeCtx);
+  if (type === "error") return null;
   const typeColors = { idle: c.textMuted, active: c.orange, success: c.teal, error: c.red };
   return (
     <View style={{ flexDirection: "row", alignItems: "center", padding: 9, backgroundColor: c.surface, borderRadius: 8, borderWidth: 1, borderColor: type === "idle" ? c.border : typeColors[type] + "66" }}>
@@ -108,6 +110,10 @@ function StatusPill({ msg, type }: { msg: string; type: "idle"|"active"|"success
       <Text style={{ fontSize: 12, flex: 1, color: typeColors[type] }}>{msg}</Text>
     </View>
   );
+}
+
+function showError(title: string, body: string) {
+  Alert.alert(title, body);
 }
 
 function SplashScreen({ onTranslate, onTranscribe, onMyVoice }: { onTranslate: () => void; onTranscribe: () => void; onMyVoice: () => void }) {
@@ -178,18 +184,36 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
   const [status, setStatus] = useState<{ msg: string; type: "idle" | "active" | "success" | "error" }>({ msg: "Tap the mic to record", type: "idle" });
   const scrollRef = useRef<ScrollView>(null);
 
+  const clearTranscribeState = useCallback(() => {
+    setTranscript("");
+    setTranslation("");
+    setFileName(null);
+    setStatus({ msg: "Tap the mic to record", type: "idle" });
+  }, []);
+
+  const handleAudioLangChange = useCallback((code: string) => {
+    setAudioLang(code);
+    clearTranscribeState();
+  }, [clearTranscribeState]);
+
+  const handleTranslateToChange = useCallback((code: string) => {
+    setTranslateTo(code);
+    clearTranscribeState();
+  }, [clearTranscribeState]);
+
   const startRecording = useCallback(async () => {
     try {
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { granted } = await Audio.requestPermissionsAsync();
-      if (!granted) { setStatus({ msg: "Microphone permission denied", type: "error" }); return; }
+      if (!granted) { showError("Microphone Access Needed", "Please allow microphone access in Settings to record audio."); return; }
       const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       setRecording(rec);
       setIsRecording(true);
       setStatus({ msg: "Recording...", type: "active" });
+      await activateKeepAwakeAsync("transcribe-recording");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch (e: any) {
-      setStatus({ msg: "Failed to start recording: " + e.message, type: "error" });
+      showError("Recording Failed", "Could not start recording. Please check your microphone and try again.");
     }
   }, []);
 
@@ -224,23 +248,25 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
       setStatus({ msg: "Done", type: "success" });
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300);
     } catch (e: any) {
-      setStatus({ msg: "Error: " + e.message, type: "error" });
+      setStatus({ msg: "Tap the mic to record", type: "idle" });
+      showError("Transcription Failed", "Something went wrong processing your audio. Please try again with a shorter or clearer recording.");
     }
   }, [audioLang, translateTo]);
 
   const stopAndTranscribe = useCallback(async () => {
     if (!recording) return;
     setIsRecording(false);
+    deactivateKeepAwake("transcribe-recording");
     setFileName(null);
     try {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       setRecording(null);
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      if (!uri) { setStatus({ msg: "No recording found", type: "error" }); return; }
+      if (!uri) { showError("Recording Error", "No audio was captured. Please try recording again."); return; }
       await sendToTranscribe(uri, "recording.m4a", "audio/m4a");
     } catch (e: any) {
-      setStatus({ msg: "Error: " + e.message, type: "error" });
+      showError("Recording Error", "Something went wrong stopping the recording. Please try again.");
     }
   }, [recording, sendToTranscribe]);
 
@@ -258,14 +284,16 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await sendToTranscribe(asset.uri, asset.name, mimeMap[ext] ?? asset.mimeType ?? "audio/m4a");
     } catch (e: any) {
-      setStatus({ msg: "Error: " + e.message, type: "error" });
+      showError("Upload Failed", "Could not process the audio file. Please try a different file format (MP3, WAV, or M4A).");
     }
   }, [sendToTranscribe]);
+
+  const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500 MB
 
   const pickVideoAndTranscribe = useCallback(async () => {
     try {
       const { status: permStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permStatus !== "granted") { setStatus({ msg: "Photo library permission denied", type: "error" }); return; }
+      if (permStatus !== "granted") { showError("Library Access Needed", "Please allow photo library access in Settings to select videos."); return; }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["videos"],
         quality: 1,
@@ -273,6 +301,13 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
       const uri = asset.uri;
+
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      if (fileInfo.exists && (fileInfo as any).size > MAX_VIDEO_SIZE) {
+        showError("Video Too Large", "This video is over 500 MB. Please choose a shorter video or compress it first, then try again.");
+        return;
+      }
+
       const name = uri.split("/").pop() ?? "video.mp4";
       const ext = name.split(".").pop()?.toLowerCase() ?? "mp4";
       const mimeMap: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime" };
@@ -280,13 +315,13 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await sendToTranscribe(uri, name, mimeMap[ext] ?? "video/mp4");
     } catch (e: any) {
-      setStatus({ msg: "Error: " + e.message, type: "error" });
+      showError("Video Upload Failed", "Could not process the video. Please try a shorter video or a different format (MP4 or MOV).");
     }
   }, [sendToTranscribe]);
 
   const transcribeYoutube = useCallback(async () => {
     const url = youtubeUrl.trim();
-    if (!url) { setStatus({ msg: "Please paste a YouTube URL", type: "error" }); return; }
+    if (!url) { showError("No URL", "Please paste a YouTube URL first."); return; }
     setStatus({ msg: "Fetching YouTube captions...", type: "active" });
     setTranscript("");
     setTranslation("");
@@ -314,7 +349,8 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
       setStatus({ msg: "Done", type: "success" });
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300);
     } catch (e: any) {
-      setStatus({ msg: e.message, type: "error" });
+      setStatus({ msg: "Tap the mic to record", type: "idle" });
+      showError("YouTube Error", "Could not fetch captions for this video. Make sure the URL is correct and the video has captions enabled.");
     }
   }, [youtubeUrl, audioLang, translateTo]);
 
@@ -496,7 +532,7 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
         )}
       </ScrollView>
 
-      <LangPickerModal visible={showAudioLangPicker} selected={audioLang} onSelect={setAudioLang} onClose={() => setShowAudioLangPicker(false)} />
+      <LangPickerModal visible={showAudioLangPicker} selected={audioLang} onSelect={handleAudioLangChange} onClose={() => setShowAudioLangPicker(false)} />
 
       {/* Translate-to picker with "No translation" option */}
       <Modal visible={showTranslatePicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowTranslatePicker(false)}>
@@ -513,7 +549,7 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }, item.code === translateTo && { backgroundColor: "rgba(232,118,26,0.15)" }]}
-                onPress={() => { setTranslateTo(item.code); setShowTranslatePicker(false); }}
+                onPress={() => { handleTranslateToChange(item.code); setShowTranslatePicker(false); }}
               >
                 {item.code === "none" ? (
                   <Ionicons name="remove-circle-outline" size={20} color="rgba(255,255,255,0.45)" />
@@ -621,6 +657,13 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
   const singleSoundRef = useRef<Audio.Sound|null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  const sourceLangRef = useRef(sourceLang);
+  sourceLangRef.current = sourceLang;
+  const targetLangRef = useRef(targetLang);
+  targetLangRef.current = targetLang;
+  const speakLangRef = useRef(speakLang);
+  speakLangRef.current = speakLang;
+
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
   const [voiceStability, setVoiceStability] = useState(0.35);
   const [voiceStyle, setVoiceStyle] = useState(0.25);
@@ -629,6 +672,12 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
   const [batchSourceLang, setBatchSourceLang] = useState("en");
   const [batchTargetLang, setBatchTargetLang] = useState("ja");
   const [batchSpeakLang, setBatchSpeakLang] = useState("ja");
+  const batchSourceLangRef = useRef(batchSourceLang);
+  batchSourceLangRef.current = batchSourceLang;
+  const batchTargetLangRef = useRef(batchTargetLang);
+  batchTargetLangRef.current = batchTargetLang;
+  const batchSpeakLangRef = useRef(batchSpeakLang);
+  batchSpeakLangRef.current = batchSpeakLang;
   const [batchText, setBatchText] = useState("");
   const [batchStatus, setBatchStatus] = useState<{msg:string;type:"idle"|"active"|"success"|"error"}>({ msg: "Paste script, hit Generate", type: "idle" });
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
@@ -636,6 +685,24 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
   const [showBatchSourcePicker, setShowBatchSourcePicker] = useState(false);
   const [showBatchTargetPicker, setShowBatchTargetPicker] = useState(false);
   const [showBatchSpeakPicker, setShowBatchSpeakPicker] = useState(false);
+
+  const clearSingleState = useCallback(() => {
+    setSingleText(""); setSingleTranslation(""); setSingleAudioUri(null);
+    setSingleStatus({ msg: "Paste text and hit Generate", type: "idle" });
+  }, []);
+
+  const handleSourceLangChange = useCallback((code: string) => { setSourceLang(code); clearSingleState(); }, [clearSingleState]);
+  const handleTargetLangChange = useCallback((code: string) => { setTargetLang(code); clearSingleState(); }, [clearSingleState]);
+  const handleSpeakLangChange = useCallback((code: string) => { setSpeakLang(code); clearSingleState(); }, [clearSingleState]);
+
+  const clearBatchState = useCallback(() => {
+    setBatchText(""); setBatchResults([]);
+    setBatchStatus({ msg: "Paste script, hit Generate", type: "idle" });
+  }, []);
+
+  const handleBatchSourceLangChange = useCallback((code: string) => { setBatchSourceLang(code); clearBatchState(); }, [clearBatchState]);
+  const handleBatchTargetLangChange = useCallback((code: string) => { setBatchTargetLang(code); clearBatchState(); }, [clearBatchState]);
+  const handleBatchSpeakLangChange = useCallback((code: string) => { setBatchSpeakLang(code); clearBatchState(); }, [clearBatchState]);
 
   function parseLines(raw: string): BatchLine[] {
     const pattern = /^(\d+(?:-\d+)+)\s*:\s*(.+)$/;
@@ -666,37 +733,46 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
 
   const runSingle = useCallback(async () => {
     const text = singleText.trim();
-    if (!text) { setSingleStatus({ msg: "Please enter some text first", type: "error" }); return; }
+    if (!text) { showError("No Text", "Please enter some text first."); return; }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSingleAudioUri(null); setSingleTranslation("");
+
+    // Read fresh language values from refs to avoid stale closures
+    const curSourceLang = sourceLangRef.current;
+    const curTargetLang = targetLangRef.current;
+    const curSpeakLang = speakLangRef.current;
+
     try {
       let audioUri: string;
       if (singleMode === "translate") {
-        if (!targetLang) { Alert.alert("No Target Language", "Please select a target language first."); return; }
+        if (!curTargetLang) { Alert.alert("No Target Language", "Please select a target language first."); return; }
         setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
         let result: { translation: string; audioUri: string };
-        if (targetLang === "my-voice" && myVoice?.voiceId) {
+        if (curTargetLang === "my-voice" && myVoice?.voiceId) {
           const overrides = myVoice.settings ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style } : undefined;
-          result = await translateAndSpeakWithMyVoice(text, sourceLang, myVoice.voiceId, overrides);
+          result = await translateAndSpeakWithMyVoice(text, curSourceLang, myVoice.voiceId, overrides);
         } else {
-          result = await translateAndSpeak(text, sourceLang, targetLang);
+          result = await translateAndSpeak(text, curSourceLang, curTargetLang);
         }
         setSingleTranslation(result.translation);
         audioUri = result.audioUri;
       } else {
         setSingleStatus({ msg: "Generating audio...", type: "active" });
-        const lang = speakLang === "my-voice" ? "en" : speakLang;
-        const overrides: VoiceOverrides = speakLang === "my-voice" && myVoice?.settings
+        const lang = curSpeakLang === "my-voice" ? "en" : curSpeakLang;
+        const overrides: VoiceOverrides = curSpeakLang === "my-voice" && myVoice?.settings
           ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style }
           : lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
-        const customId = speakLang === "my-voice" ? myVoice?.voiceId : undefined;
+        const customId = curSpeakLang === "my-voice" ? myVoice?.voiceId : undefined;
         audioUri = await speakText(text, lang, overrides, customId);
       }
       setSingleAudioUri(audioUri);
       setSingleStatus({ msg: "Done — tap Play or Share", type: "success" });
       await playAudio(audioUri);
-    } catch (err: any) { setSingleStatus({ msg: "Error: " + err.message, type: "error" }); }
-  }, [singleText, singleMode, sourceLang, targetLang, speakLang, voiceSpeed, voiceStability, voiceStyle, myVoice]);
+    } catch (err: any) {
+      setSingleStatus({ msg: "Paste text and hit Generate", type: "idle" });
+      showError("Generation Failed", "Something went wrong. Please check your internet connection and try again.");
+    }
+  }, [singleText, singleMode, voiceSpeed, voiceStability, voiceStyle, myVoice]);
 
   async function shareSingleAudio() {
     if (!singleAudioUri) return;
@@ -707,11 +783,17 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
 
   const runBatch = useCallback(async () => {
     const lines = parseLines(batchText);
-    if (!lines.length) { setBatchStatus({ msg: "No numbered lines found. Format: 1-1: Your text", type: "error" }); return; }
+    if (!lines.length) { showError("No Lines Found", "No numbered lines detected. Please format as:\n1-1: Your text here"); return; }
     if (batchRunning) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setBatchRunning(true);
     setBatchResults(lines.map(l => ({ id: l.id, status: "pending" })));
+
+    // Read fresh language values from refs
+    const curBatchSourceLang = batchSourceLangRef.current;
+    const curBatchTargetLang = batchTargetLangRef.current;
+    const curBatchSpeakLang = batchSpeakLangRef.current;
+
     const tempDir = (FileSystem.cacheDirectory ?? "") + "kanjin-batch/";
     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
     const filePaths: string[] = [];
@@ -723,19 +805,19 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
         let audioUri: string;
         if (batchMode === "translate") {
           let result: { translation: string; audioUri: string };
-          if (batchTargetLang === "my-voice" && myVoice?.voiceId) {
+          if (curBatchTargetLang === "my-voice" && myVoice?.voiceId) {
             const overrides = myVoice.settings ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style } : undefined;
-            result = await translateAndSpeakWithMyVoice(text, batchSourceLang, myVoice.voiceId, overrides);
+            result = await translateAndSpeakWithMyVoice(text, curBatchSourceLang, myVoice.voiceId, overrides);
           } else {
-            result = await translateAndSpeak(text, batchSourceLang, batchTargetLang);
+            result = await translateAndSpeak(text, curBatchSourceLang, curBatchTargetLang);
           }
           audioUri = result.audioUri;
         } else {
-          const lang = batchSpeakLang === "my-voice" ? "en" : batchSpeakLang;
-          const overrides: VoiceOverrides = batchSpeakLang === "my-voice" && myVoice?.settings
+          const lang = curBatchSpeakLang === "my-voice" ? "en" : curBatchSpeakLang;
+          const overrides: VoiceOverrides = curBatchSpeakLang === "my-voice" && myVoice?.settings
             ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style }
             : lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
-          const customId = batchSpeakLang === "my-voice" ? myVoice?.voiceId : undefined;
+          const customId = curBatchSpeakLang === "my-voice" ? myVoice?.voiceId : undefined;
           audioUri = await speakText(text, lang, overrides, customId);
         }
         const dest = tempDir + `${id}.mp3`;
@@ -753,10 +835,13 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
       catch (e) { console.error("Share error:", e); }
     }
     setBatchRunning(false);
-    setBatchStatus(errors.length === 0
-      ? { msg: `✓ All ${lines.length} files generated!`, type: "success" }
-      : { msg: `Done — ${lines.length - errors.length} OK, ${errors.length} failed`, type: "error" });
-  }, [batchText, batchMode, batchSourceLang, batchTargetLang, batchSpeakLang, batchRunning]);
+    if (errors.length === 0) {
+      setBatchStatus({ msg: `All ${lines.length} files generated!`, type: "success" });
+    } else {
+      setBatchStatus({ msg: `${lines.length - errors.length} of ${lines.length} completed`, type: "success" });
+      showError("Some Lines Failed", `${errors.length} line(s) could not be processed. Check your internet connection and try generating again.`);
+    }
+  }, [batchText, batchMode, batchRunning, voiceSpeed, voiceStability, voiceStyle, myVoice]);
 
   const lineCount = parseLines(batchText).length;
 
@@ -993,12 +1078,12 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
         )}
       </ScrollView>
 
-      <LangPickerModal visible={showSourcePicker} selected={sourceLang} onSelect={setSourceLang} onClose={() => setShowSourcePicker(false)} myVoice={myVoice} />
-      <LangPickerModal visible={showTargetPicker} selected={targetLang} onSelect={setTargetLang} onClose={() => setShowTargetPicker(false)} myVoice={myVoice} />
-      <LangPickerModal visible={showSpeakPicker} selected={speakLang} onSelect={setSpeakLang} onClose={() => setShowSpeakPicker(false)} myVoice={myVoice} />
-      <LangPickerModal visible={showBatchSourcePicker} selected={batchSourceLang} onSelect={setBatchSourceLang} onClose={() => setShowBatchSourcePicker(false)} myVoice={myVoice} />
-      <LangPickerModal visible={showBatchTargetPicker} selected={batchTargetLang} onSelect={setBatchTargetLang} onClose={() => setShowBatchTargetPicker(false)} myVoice={myVoice} />
-      <LangPickerModal visible={showBatchSpeakPicker} selected={batchSpeakLang} onSelect={setBatchSpeakLang} onClose={() => setShowBatchSpeakPicker(false)} myVoice={myVoice} />
+      <LangPickerModal visible={showSourcePicker} selected={sourceLang} onSelect={handleSourceLangChange} onClose={() => setShowSourcePicker(false)} myVoice={myVoice} />
+      <LangPickerModal visible={showTargetPicker} selected={targetLang} onSelect={handleTargetLangChange} onClose={() => setShowTargetPicker(false)} myVoice={myVoice} />
+      <LangPickerModal visible={showSpeakPicker} selected={speakLang} onSelect={handleSpeakLangChange} onClose={() => setShowSpeakPicker(false)} myVoice={myVoice} />
+      <LangPickerModal visible={showBatchSourcePicker} selected={batchSourceLang} onSelect={handleBatchSourceLangChange} onClose={() => setShowBatchSourcePicker(false)} myVoice={myVoice} />
+      <LangPickerModal visible={showBatchTargetPicker} selected={batchTargetLang} onSelect={handleBatchTargetLangChange} onClose={() => setShowBatchTargetPicker(false)} myVoice={myVoice} />
+      <LangPickerModal visible={showBatchSpeakPicker} selected={batchSpeakLang} onSelect={handleBatchSpeakLangChange} onClose={() => setShowBatchSpeakPicker(false)} myVoice={myVoice} />
     </View>
     </TouchableWithoutFeedback>
     </KeyboardAvoidingView>

@@ -5,6 +5,8 @@ export const LANGUAGES = [
   { code: "es",    label: "Spanish",          flag: "🇪🇸" },
   { code: "fr",    label: "French",           flag: "🇫🇷" },
   { code: "no",    label: "Norwegian",        flag: "🇳🇴" },
+  { code: "tl",    label: "Filipino",          flag: "🇵🇭" },
+  { code: "da",    label: "Danish",            flag: "🇩🇰" },
   { code: "de",    label: "German",           flag: "🇩🇪" },
   { code: "pt",    label: "Portuguese",       flag: "🇧🇷" },
   { code: "zh",    label: "Mandarin Chinese", flag: "🇨🇳" },

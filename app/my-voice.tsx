@@ -9,6 +9,7 @@ import * as Haptics from "expo-haptics";
 import { Audio } from "expo-av";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { COLORS } from "../constants/config";
 import { cloneVoice } from "../utils/api";
 import { saveMyVoice } from "../utils/voice-storage";
@@ -70,15 +71,16 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
       setRecordingSeconds(0);
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { granted } = await Audio.requestPermissionsAsync();
-      if (!granted) { setStatus({ msg: "Microphone permission denied", type: "error" }); return; }
+      if (!granted) { Alert.alert("Microphone Access Needed", "Please allow microphone access in Settings to record your voice."); return; }
       const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       setRecording(rec);
       setIsRecording(true);
       setStatus({ msg: "Recording... read the script below", type: "active" });
+      await activateKeepAwakeAsync("voice-recording");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       timerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000);
     } catch (e: any) {
-      setStatus({ msg: "Failed to start: " + e.message, type: "error" });
+      Alert.alert("Recording Failed", "Could not start recording. Please check your microphone and try again.");
     }
   }, []);
 
@@ -86,6 +88,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
     if (!recording) return;
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     setIsRecording(false);
+    deactivateKeepAwake("voice-recording");
     try {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
@@ -97,7 +100,7 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
       }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch (e: any) {
-      setStatus({ msg: "Error stopping: " + e.message, type: "error" });
+      Alert.alert("Recording Error", "Something went wrong stopping the recording. Please try again.");
     }
   }, [recording, recordingSeconds]);
 
@@ -121,13 +124,13 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
       setStatus({ msg: `File selected: ${asset.name}`, type: "success" });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch (e: any) {
-      setStatus({ msg: "Error: " + e.message, type: "error" });
+      Alert.alert("Upload Failed", "Could not read the audio file. Please try a different file (MP3, WAV, or M4A).");
     }
   }, []);
 
   const handleClone = useCallback(async () => {
     const audioUri = recordedUri || uploadedFile?.uri;
-    if (!audioUri) { setStatus({ msg: "Please record or upload audio first", type: "error" }); return; }
+    if (!audioUri) { Alert.alert("No Audio", "Please record or upload an audio file first."); return; }
     const name = voiceName.trim();
     if (!name) { Alert.alert("Voice Name Required", "Please enter a voice name first."); return; }
     setCloning(true);
@@ -142,7 +145,8 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
         { text: "OK", onPress: () => onBack() },
       ]);
     } catch (e: any) {
-      setStatus({ msg: "Clone failed: " + e.message, type: "error" });
+      setStatus({ msg: "Record or upload audio of your voice", type: "idle" });
+      Alert.alert("Cloning Failed", "Could not clone your voice. Please try recording again with clearer audio, or upload a different file.");
     } finally {
       setCloning(false);
     }
@@ -325,14 +329,16 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
               </Pressable>
 
               {/* Status */}
+              {status.type !== "error" && (
               <View style={{
                 flexDirection: "row", alignItems: "center", padding: 9, marginTop: 10,
                 backgroundColor: c.surface, borderRadius: 8, borderWidth: 1,
-                borderColor: status.type === "idle" ? c.border : status.type === "active" ? c.orange + "66" : status.type === "success" ? c.teal + "66" : c.red + "66",
+                borderColor: status.type === "idle" ? c.border : status.type === "active" ? c.orange + "66" : c.teal + "66",
               }}>
                 {status.type === "active" && <ActivityIndicator size="small" color={c.orange} style={{ marginRight: 8 }} />}
-                <Text style={{ fontSize: 12, flex: 1, color: status.type === "idle" ? c.textMuted : status.type === "active" ? c.orange : status.type === "success" ? c.teal : c.red }}>{status.msg}</Text>
+                <Text style={{ fontSize: 12, flex: 1, color: status.type === "idle" ? c.textMuted : status.type === "active" ? c.orange : c.teal }}>{status.msg}</Text>
               </View>
+              )}
 
             </ScrollView>
           </View>
