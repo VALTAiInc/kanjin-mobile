@@ -105,39 +105,49 @@ export async function cloneVoice(audioUri: string, name: string): Promise<string
   return data.voice_id;
 }
 
-/** Translate via Anthropic + speak with a custom ElevenLabs voice (bypasses bridge backend). */
+/** Translate via Anthropic + speak with a custom ElevenLabs voice (bypasses bridge backend).
+ *  If targetLanguage is omitted, the source text is spoken directly (no translation).
+ *  eleven_multilingual_v2 handles any language natively with cloned voices. */
 export async function translateAndSpeakWithMyVoice(
   text: string,
   sourceLanguage: string,
   customVoiceId: string,
   overrides?: VoiceOverrides,
+  targetLanguage?: string,
 ): Promise<TranslateResult> {
-  if (!ANTHROPIC_API_KEY) throw new Error("Anthropic API key not configured");
+  let ttsText = text;
+  let translation = text;
 
-  // 1. Translate via Anthropic
-  const translateRes = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      system: `You are a professional translator. Translate the user's text from ${sourceLanguage} to English. Return ONLY the translated text, nothing else.`,
-      messages: [{ role: "user", content: text }],
-    }),
-  });
-  if (!translateRes.ok) {
-    const err = await translateRes.text().catch(() => "");
-    throw new Error(`Translation error ${translateRes.status}: ${err}`);
+  // Only translate if a concrete target language is provided and differs from source
+  if (targetLanguage && targetLanguage !== sourceLanguage) {
+    if (!ANTHROPIC_API_KEY) throw new Error("Anthropic API key not configured");
+    const langLabel = LANGUAGE_LABELS[targetLanguage] ?? targetLanguage;
+    const sourceLangLabel = LANGUAGE_LABELS[sourceLanguage] ?? sourceLanguage;
+    const translateRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        system: `You are a professional translator. Translate the user's text from ${sourceLangLabel} to ${langLabel}. Return ONLY the translated text, nothing else.`,
+        messages: [{ role: "user", content: text }],
+      }),
+    });
+    if (!translateRes.ok) {
+      const err = await translateRes.text().catch(() => "");
+      throw new Error(`Translation error ${translateRes.status}: ${err}`);
+    }
+    const translateData = await translateRes.json();
+    translation = translateData.content?.[0]?.text?.trim() ?? "";
+    if (!translation) throw new Error("Empty translation returned");
+    ttsText = translation;
   }
-  const translateData = await translateRes.json();
-  const translation = translateData.content?.[0]?.text?.trim() ?? "";
-  if (!translation) throw new Error("Empty translation returned");
 
-  // 2. Speak with custom voice via ElevenLabs
+  // Speak with custom voice via ElevenLabs (eleven_multilingual_v2 handles any language)
   const defaults = { stability: 0.5, similarity_boost: 1.0, style: 0.2, use_speaker_boost: true, speed: 1.0 };
   const voiceSettings = overrides
     ? { ...defaults, ...overrides, use_speaker_boost: true }
@@ -153,7 +163,7 @@ export async function translateAndSpeakWithMyVoice(
         Accept: "audio/mpeg",
       },
       body: JSON.stringify({
-        text: translation,
+        text: ttsText,
         model_id: "eleven_multilingual_v2",
         voice_settings: voiceSettings,
       }),
@@ -172,6 +182,14 @@ export async function translateAndSpeakWithMyVoice(
 
   return { translation, audioUri: fileUri };
 }
+
+/** Human-readable language labels for translation prompts. */
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: "English", ja: "Japanese", es: "Spanish", fr: "French", no: "Norwegian",
+  tl: "Filipino", da: "Danish", de: "German", pt: "Portuguese", zh: "Mandarin Chinese",
+  ko: "Korean", ar: "Arabic", "ar-LB": "Lebanese Arabic", hi: "Hindi", it: "Italian",
+  ru: "Russian", nl: "Dutch", tr: "Turkish", pl: "Polish",
+};
 
 export interface VoiceOverrides {
   stability?: number;

@@ -771,15 +771,15 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
   const handleBatchTargetLangChange = useCallback((code: string) => { setBatchTargetLang(code); clearBatchOutput(); }, [clearBatchOutput]);
   const handleBatchSpeakLangChange = useCallback((code: string) => { setBatchSpeakLang(code); clearBatchOutput(); }, [clearBatchOutput]);
 
-  const handleSingleTextChange = useCallback((text: string) => {
-    setSingleText(text);
-    if (singleMode === "translate" && text.length >= 3) {
-      const detected = detectLanguageFromText(text);
+  // Auto-detect source language from text (works for both typed and programmatic changes)
+  useEffect(() => {
+    if (singleMode === "translate" && singleText.length >= 3) {
+      const detected = detectLanguageFromText(singleText);
       if (detected && detected !== sourceLangRef.current) {
         setSourceLang(detected);
       }
     }
-  }, [singleMode]);
+  }, [singleText, singleMode]);
 
   function parseLines(raw: string): BatchLine[] {
     const pattern = /^(\d+(?:-\d+)+)\s*:\s*(.+)$/;
@@ -826,9 +826,10 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
         setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
         let result: { translation: string; audioUri: string };
         if (curTargetLang === "my-voice" && myVoice?.voiceId) {
-          console.log("[MyVoice] Using cloned voiceId:", myVoice.voiceId, "name:", myVoice.name);
+          console.log("[MyVoice] Using cloned voiceId:", myVoice.voiceId, "name:", myVoice.name, "speaking source text directly (multilingual)");
           const overrides = myVoice.settings ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style } : undefined;
-          result = await translateAndSpeakWithMyVoice(text, curSourceLang, myVoice.voiceId, overrides);
+          // No targetLanguage → source text goes directly to cloned voice (eleven_multilingual_v2 handles any language)
+          result = await translateAndSpeakWithMyVoice(text, curSourceLang, myVoice.voiceId, overrides, undefined);
         } else if (curTargetLang === "my-voice" && !myVoice?.voiceId) {
           Alert.alert("No Voice Cloned", "Please clone your voice first from the main menu.");
           return;
@@ -844,7 +845,8 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
           return;
         }
         if (curSpeakLang === "my-voice") console.log("[MyVoice] Speaking with cloned voiceId:", myVoice!.voiceId, "name:", myVoice!.name);
-        const lang = curSpeakLang === "my-voice" ? "en" : curSpeakLang;
+        // When using My Voice, detect the text's actual language instead of defaulting to English
+        const lang = curSpeakLang === "my-voice" ? (detectLanguageFromText(text) ?? "en") : curSpeakLang;
         const overrides: VoiceOverrides = curSpeakLang === "my-voice" && myVoice?.settings
           ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style }
           : lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
@@ -893,13 +895,13 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
           let result: { translation: string; audioUri: string };
           if (curBatchTargetLang === "my-voice" && myVoice?.voiceId) {
             const overrides = myVoice.settings ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style } : undefined;
-            result = await translateAndSpeakWithMyVoice(text, curBatchSourceLang, myVoice.voiceId, overrides);
+            result = await translateAndSpeakWithMyVoice(text, curBatchSourceLang, myVoice.voiceId, overrides, undefined);
           } else {
             result = await translateAndSpeak(text, curBatchSourceLang, curBatchTargetLang);
           }
           audioUri = result.audioUri;
         } else {
-          const lang = curBatchSpeakLang === "my-voice" ? "en" : curBatchSpeakLang;
+          const lang = curBatchSpeakLang === "my-voice" ? (detectLanguageFromText(text) ?? "en") : curBatchSpeakLang;
           const overrides: VoiceOverrides = curBatchSpeakLang === "my-voice" && myVoice?.settings
             ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style }
             : lang === "ja" ? { stability: voiceStability, style: voiceStyle, speed: voiceSpeed } : { speed: voiceSpeed };
@@ -1038,7 +1040,7 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
             )}
 
             <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>{singleMode === "translate" ? "TEXT TO TRANSLATE" : "TEXT TO SPEAK"}</Text>
-            <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 85, textAlignVertical: "top" }} multiline value={singleText} onChangeText={handleSingleTextChange}
+            <TextInput style={{ backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 10, color: c.text, fontSize: 14, lineHeight: 20, padding: 10, minHeight: 85, textAlignVertical: "top" }} multiline value={singleText} onChangeText={setSingleText}
               placeholder="Type or paste text here..." placeholderTextColor={c.textDim} maxLength={5000} />
             <Text style={{ textAlign: "right", fontSize: 10, color: c.textDim, marginTop: -6 }}>{singleText.length} / 5000</Text>
 
