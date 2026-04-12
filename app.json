@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Bridge by VALT",
+    "name": "Voice by VALT",
     "slug": "bridge",
     "version": "1.1.0",
     "orientation": "portrait",
@@ -16,7 +16,7 @@
       "bundleIdentifier": "com.valt.kanjin",
       "buildNumber": "8",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Bridge needs microphone access to record your voice for translation.",
+        "NSMicrophoneUsageDescription": "Voice needs microphone access to record your voice for translation.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -35,14 +35,14 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Bridge needs microphone access to record your voice for translation."
+          "microphonePermission": "Voice needs microphone access to record your voice for translation."
         }
       ],
       "expo-font",
       [
         "expo-image-picker",
         {
-          "photoLibraryUsageDescription": "Kanjin needs access to your photo library to upload videos for transcription."
+          "photoLibraryUsageDescription": "Voice needs access to your photo library to upload videos for transcription."
         }
       ]
     ],

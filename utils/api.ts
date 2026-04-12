@@ -3,7 +3,6 @@ import * as FileSystem from "expo-file-system/legacy";
 const API_BASE = "https://bridge-backend-production-b481.up.railway.app";
 
 const ELEVENLABS_API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY ?? "";
-const ANTHROPIC_API_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? "";
 
 const VOICE_IDS: Record<string, string> = {
   en: "EXAVITQu4vr4xnSDxMaL", ja: "WQz3clzUdMqvBf0jswZQ",
@@ -14,6 +13,10 @@ const VOICE_IDS: Record<string, string> = {
   hi: "ThT5KcBeYPX3keUQqHPh", it: "TxGEqnHWrfWFTfGW9XjX",
   ru: "yoZ06aMxZJJ28mfd3POQ", nl: "Zlb1dXrM653N07WRdFW3",
   tr: "g5CIjZEefAph4nQFvHAz", pl: "onwK4e9ZLuTAKqWW03F9",
+  // Placeholder fallbacks until dedicated voice IDs are sourced
+  no: "ErXwobaYiN019PkySvjV",   // Norwegian → German voice fallback
+  tl: "21m00Tcm4TlvDq8ikWAM",   // Filipino → English voice fallback
+  da: "ErXwobaYiN019PkySvjV",   // Danish → German voice fallback
 };
 
 export interface TranslateResult {
@@ -51,27 +54,26 @@ export async function translateAndSpeak(
   return { translation: data.translation, audioUri: fileUri };
 }
 
+/** Translate text via the Bridge backend (text only, no TTS). */
+async function translateText(text: string, sourceLanguage: string, targetLanguage: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/api/translate-text`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, sourceLanguage, targetLanguage }),
+  });
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    throw new Error(`Translation error ${response.status}: ${errBody}`);
+  }
+  const data = await response.json();
+  return data.translation ?? "";
+}
+
 /** Prep text for Japanese TTS voice — add natural punctuation for better delivery. */
 async function cleanJapanesePunctuation(text: string): Promise<string> {
-  if (!ANTHROPIC_API_KEY) return text;
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        system: `You are a text prep assistant for Japanese text-to-speech. The input is English text that will be read aloud by a Japanese voice. Add natural punctuation to improve TTS delivery — use ? for questions and ... for natural pauses. Do not add exclamation marks. Never duplicate punctuation that already exists in the text. Do not translate. Do not change any words. Return ONLY the corrected text.`,
-        messages: [{ role: "user", content: text }],
-      }),
-    });
-    if (!res.ok) return text;
-    const data = await res.json();
-    return data.content?.[0]?.text?.trim() || text;
+    const result = await translateText(text, "japanese-tts-prep", "japanese-tts-prep");
+    return result || text;
   } catch {
     return text;
   }
@@ -105,7 +107,7 @@ export async function cloneVoice(audioUri: string, name: string): Promise<string
   return data.voice_id;
 }
 
-/** Translate via Anthropic + speak with a custom ElevenLabs voice (bypasses bridge backend).
+/** Translate via Bridge backend + speak with a custom ElevenLabs voice.
  *  If targetLanguage is omitted, the source text is spoken directly (no translation).
  *  eleven_multilingual_v2 handles any language natively with cloned voices. */
 export async function translateAndSpeakWithMyVoice(
@@ -120,29 +122,7 @@ export async function translateAndSpeakWithMyVoice(
 
   // Only translate if a concrete target language is provided and differs from source
   if (targetLanguage && targetLanguage !== sourceLanguage) {
-    if (!ANTHROPIC_API_KEY) throw new Error("Anthropic API key not configured");
-    const langLabel = LANGUAGE_LABELS[targetLanguage] ?? targetLanguage;
-    const sourceLangLabel = LANGUAGE_LABELS[sourceLanguage] ?? sourceLanguage;
-    const translateRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2048,
-        system: `You are a professional translator. Translate the user's text from ${sourceLangLabel} to ${langLabel}. Return ONLY the translated text, nothing else.`,
-        messages: [{ role: "user", content: text }],
-      }),
-    });
-    if (!translateRes.ok) {
-      const err = await translateRes.text().catch(() => "");
-      throw new Error(`Translation error ${translateRes.status}: ${err}`);
-    }
-    const translateData = await translateRes.json();
-    translation = translateData.content?.[0]?.text?.trim() ?? "";
+    translation = await translateText(text, sourceLanguage, targetLanguage);
     if (!translation) throw new Error("Empty translation returned");
     ttsText = translation;
   }
@@ -183,14 +163,6 @@ export async function translateAndSpeakWithMyVoice(
   return { translation, audioUri: fileUri };
 }
 
-/** Human-readable language labels for translation prompts. */
-const LANGUAGE_LABELS: Record<string, string> = {
-  en: "English", ja: "Japanese", es: "Spanish", fr: "French", no: "Norwegian",
-  tl: "Filipino", da: "Danish", de: "German", pt: "Portuguese", zh: "Mandarin Chinese",
-  ko: "Korean", ar: "Arabic", "ar-LB": "Lebanese Arabic", hi: "Hindi", it: "Italian",
-  ru: "Russian", nl: "Dutch", tr: "Turkish", pl: "Polish",
-};
-
 export interface VoiceOverrides {
   stability?: number;
   similarity_boost?: number;
@@ -209,7 +181,7 @@ export async function speakText(
   const isJapanese = language === "ja";
 
   const ttsText = isJapanese ? await cleanJapanesePunctuation(text) : text;
-  const modelId = isJapanese ? "eleven_multilingual_v2" : "eleven_multilingual_v2";
+  const modelId = "eleven_multilingual_v2";
   const defaults = isJapanese
     ? { stability: 0.35, similarity_boost: 0.80, style: 0.25, use_speaker_boost: true }
     : { stability: 0.5, similarity_boost: 1.0, style: 0.2, use_speaker_boost: true, speed: 1.0 };

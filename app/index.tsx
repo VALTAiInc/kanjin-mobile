@@ -102,12 +102,12 @@ function LangButton({ code, onPress, myVoiceName }: { code: string; onPress: () 
 
 function StatusPill({ msg, type }: { msg: string; type: "idle"|"active"|"success"|"error" }) {
   const { c } = useContext(ThemeCtx);
-  if (type === "error") return null;
-  const typeColors = { idle: c.textMuted, active: c.orange, success: c.teal, error: c.red };
+  if (type === "error" || type === "idle") return null;
+  const color = type === "active" ? c.orange : c.teal;
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", padding: 9, backgroundColor: c.surface, borderRadius: 8, borderWidth: 1, borderColor: type === "idle" ? c.border : typeColors[type] + "66" }}>
+    <View style={{ flexDirection: "row", alignItems: "center", padding: 9, backgroundColor: c.surface, borderRadius: 8, borderWidth: 1, borderColor: color + "66" }}>
       {type === "active" && <ActivityIndicator size="small" color={c.orange} style={{ marginRight: 8 }} />}
-      <Text style={{ fontSize: 12, flex: 1, color: typeColors[type] }}>{msg}</Text>
+      <Text style={{ fontSize: 12, flex: 1, color }}>{msg}</Text>
     </View>
   );
 }
@@ -206,6 +206,7 @@ const splashStyles = StyleSheet.create({
 const TRANSCRIBE_STORAGE_KEY = "last_transcription";
 
 function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; onUseInTranslator: (text: string) => void }) {
+  const { c } = useContext(ThemeCtx);
   const [audioLang, setAudioLang] = useState("en");
   const [translateTo, setTranslateTo] = useState("none");
   const [showAudioLangPicker, setShowAudioLangPicker] = useState(false);
@@ -424,46 +425,46 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
   }, [transcript, translation]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#0A0A0F" }} edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top"]}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={{ flex: 1 }}>
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
         <Pressable onPress={onBack} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-          <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}>Back</Text>
+          <Ionicons name="arrow-back" size={22} color={c.text} />
+          <Text style={{ color: c.text, fontSize: 15, fontWeight: "600" }}>Back</Text>
         </Pressable>
-        <Text style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}>Transcribe</Text>
+        <Text style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: "700", color: c.text }}>Transcribe</Text>
         <View style={{ width: 60 }} />
       </View>
 
       <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
         {/* Audio Language selector */}
         <View style={{ marginTop: 16, gap: 4 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>AUDIO LANGUAGE</Text>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>AUDIO LANGUAGE</Text>
           <LangButton code={audioLang} onPress={() => setShowAudioLangPicker(true)} />
         </View>
 
         {/* Translate To selector */}
         <View style={{ marginTop: 12, gap: 4 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATE TO</Text>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATE TO</Text>
           <Pressable
-            style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#12121A", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
             onPress={() => setShowTranslatePicker(true)}
           >
             {translateTo === "none" ? (
               <>
-                <Ionicons name="remove-circle-outline" size={18} color="rgba(255,255,255,0.45)" />
-                <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.45)" }}>No translation</Text>
+                <Ionicons name="remove-circle-outline" size={18} color={c.textMuted} />
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: c.textMuted }}>No translation</Text>
               </>
             ) : (
               <>
                 <Text style={{ fontSize: 18 }}>{LANGUAGES.find(l => l.code === translateTo)?.flag ?? ""}</Text>
-                <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: "#FFFFFF" }}>{LANGUAGES.find(l => l.code === translateTo)?.label ?? ""}</Text>
+                <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: c.text }}>{LANGUAGES.find(l => l.code === translateTo)?.label ?? ""}</Text>
               </>
             )}
-            <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.45)" />
+            <Ionicons name="chevron-down" size={14} color={c.textMuted} />
           </Pressable>
         </View>
 
@@ -473,15 +474,15 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
             onPress={isRecording ? stopAndTranscribe : startRecording}
             style={({ pressed }) => ({
               width: 120, height: 120, borderRadius: 60,
-              backgroundColor: isRecording ? "#FE7725" : pressed ? "rgba(254,119,37,0.3)" : "#12121A",
-              borderWidth: 3, borderColor: "#FE7725",
+              backgroundColor: isRecording ? c.orange : pressed ? c.orangeDim : c.surface,
+              borderWidth: 3, borderColor: c.orange,
               alignItems: "center", justifyContent: "center",
-              ...(isRecording ? { shadowColor: "#FE7725", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 20 } : {}),
+              ...(isRecording ? { shadowColor: c.orange, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 20 } : {}),
             })}
           >
-            <Ionicons name={isRecording ? "stop" : "mic"} size={48} color={isRecording ? "#FFFFFF" : "#FE7725"} />
+            <Ionicons name={isRecording ? "stop" : "mic"} size={48} color={isRecording ? "#FFFFFF" : c.orange} />
           </Pressable>
-          <Text style={{ marginTop: 12, fontSize: 13, color: "rgba(255,255,255,0.45)", fontStyle: "italic" }}>
+          <Text style={{ marginTop: 12, fontSize: 13, color: c.textMuted, fontStyle: "italic" }}>
             {isRecording ? "Tap to stop" : "Tap to record"}
           </Text>
         </View>
@@ -494,12 +495,12 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
               flexDirection: "row", alignItems: "center", gap: 8,
               paddingHorizontal: 20, paddingVertical: 10,
               borderRadius: 20, borderWidth: 1,
-              borderColor: pressed ? "#FE7725" : "rgba(255,255,255,0.2)",
-              backgroundColor: pressed ? "rgba(254,119,37,0.1)" : "transparent",
+              borderColor: pressed ? c.orange : c.border,
+              backgroundColor: pressed ? c.orangeDim : "transparent",
             })}
           >
-            <Ionicons name="cloud-upload-outline" size={18} color="rgba(255,255,255,0.6)" />
-            <Text style={{ fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.6)" }}>Upload audio file</Text>
+            <Ionicons name="cloud-upload-outline" size={18} color={c.textMuted} />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: c.textMuted }}>Upload audio file</Text>
           </Pressable>
           <View style={{ height: 8 }} />
           <Pressable
@@ -508,25 +509,25 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
               flexDirection: "row", alignItems: "center", gap: 8,
               paddingHorizontal: 20, paddingVertical: 10,
               borderRadius: 20, borderWidth: 1,
-              borderColor: pressed ? "#FE7725" : "rgba(255,255,255,0.2)",
-              backgroundColor: pressed ? "rgba(254,119,37,0.1)" : "transparent",
+              borderColor: pressed ? c.orange : c.border,
+              backgroundColor: pressed ? c.orangeDim : "transparent",
             })}
           >
-            <Ionicons name="videocam-outline" size={18} color="rgba(255,255,255,0.6)" />
-            <Text style={{ fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.6)" }}>Upload video file</Text>
+            <Ionicons name="videocam-outline" size={18} color={c.textMuted} />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: c.textMuted }}>Upload video file</Text>
           </Pressable>
         </View>
 
         {/* YouTube URL */}
         <View style={{ marginBottom: 16, gap: 6 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>YOUTUBE URL</Text>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>YOUTUBE URL</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TextInput
-              style={{ flex: 1, backgroundColor: "#12121A", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", borderRadius: 8, color: "#FFFFFF", fontSize: 13, paddingHorizontal: 10, paddingVertical: 8 }}
+              style={{ flex: 1, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, color: c.text, fontSize: 13, paddingHorizontal: 10, paddingVertical: 8 }}
               value={youtubeUrl}
               onChangeText={setYoutubeUrl}
               placeholder="https://youtube.com/watch?v=..."
-              placeholderTextColor="rgba(255,255,255,0.18)"
+              placeholderTextColor={c.textDim}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="done"
@@ -535,12 +536,12 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
             <Pressable
               onPress={transcribeYoutube}
               style={({ pressed }) => ({
-                backgroundColor: pressed ? "#FE7725" : "rgba(254,119,37,0.15)",
+                backgroundColor: pressed ? c.orange : c.orangeDim,
                 borderRadius: 8, paddingHorizontal: 12, justifyContent: "center",
-                borderWidth: 1, borderColor: "#FE7725",
+                borderWidth: 1, borderColor: c.orange,
               })}
             >
-              <Ionicons name="logo-youtube" size={20} color="#FE7725" />
+              <Ionicons name="logo-youtube" size={20} color={c.orange} />
             </Pressable>
           </View>
         </View>
@@ -550,52 +551,52 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
 
         {/* Transcript & Translation */}
         {transcript !== "" && (
-          <View style={{ marginTop: 16, backgroundColor: "#12121A", borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", padding: 14, gap: 10 }}>
+          <View style={{ marginTop: 16, backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border, padding: 14, gap: 10 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSCRIPT</Text>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSCRIPT</Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                 <Pressable onPress={() => { setTranscript(""); setTranslation(""); setFileName(null); setStatus({ msg: "Tap the mic to record", type: "idle" }); AsyncStorage.removeItem(TRANSCRIBE_STORAGE_KEY).catch(() => {}); }} hitSlop={8}>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.30)" }}>Clear</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: c.textDim }}>Clear</Text>
                 </Pressable>
                 <Pressable onPress={async () => { await Clipboard.setStringAsync(transcript); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }} hitSlop={8}>
-                  <Ionicons name="copy-outline" size={16} color="rgba(255,255,255,0.45)" />
+                  <Ionicons name="copy-outline" size={16} color={c.textMuted} />
                 </Pressable>
               </View>
             </View>
             {fileName && (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Ionicons name="document-outline" size={14} color="rgba(255,255,255,0.35)" />
-                <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>{fileName}</Text>
+                <Ionicons name="document-outline" size={14} color={c.textDim} />
+                <Text style={{ fontSize: 12, color: c.textDim }}>{fileName}</Text>
               </View>
             )}
-            <Text style={{ fontSize: 15, color: "#FFFFFF", lineHeight: 22 }} selectable>{transcript}</Text>
+            <Text style={{ fontSize: 15, color: c.text, lineHeight: 22 }} selectable>{transcript}</Text>
 
             {translation !== "" && (
               <>
-                <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginVertical: 4 }} />
+                <View style={{ height: 1, backgroundColor: c.border, marginVertical: 4 }} />
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATION</Text>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>TRANSLATION</Text>
                   <Pressable onPress={async () => { await Clipboard.setStringAsync(translation); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }} hitSlop={8}>
-                    <Ionicons name="copy-outline" size={16} color="rgba(255,255,255,0.45)" />
+                    <Ionicons name="copy-outline" size={16} color={c.textMuted} />
                   </Pressable>
                 </View>
-                <Text style={{ fontSize: 15, color: "#FE7725", lineHeight: 22 }} selectable>{translation}</Text>
+                <Text style={{ fontSize: 15, color: c.orange, lineHeight: 22 }} selectable>{translation}</Text>
               </>
             )}
 
-            <Pressable onPress={copyAll} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#12121A", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingVertical: 12, marginTop: 4 }}>
-              <Ionicons name="copy-outline" size={18} color="#FE7725" />
-              <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Copy</Text>
+            <Pressable onPress={copyAll} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, paddingVertical: 12, marginTop: 4 }}>
+              <Ionicons name="copy-outline" size={18} color={c.orange} />
+              <Text style={{ fontSize: 14, fontWeight: "700", color: c.orange }}>Copy</Text>
             </Pressable>
 
-            <Pressable onPress={shareAll} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#12121A", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", paddingVertical: 12 }}>
-              <Ionicons name="save-outline" size={18} color="#FE7725" />
-              <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Save to Files</Text>
+            <Pressable onPress={shareAll} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, paddingVertical: 12 }}>
+              <Ionicons name="save-outline" size={18} color={c.orange} />
+              <Text style={{ fontSize: 14, fontWeight: "700", color: c.orange }}>Save to Files</Text>
             </Pressable>
 
-            <Pressable onPress={() => onUseInTranslator(translation || transcript)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "rgba(232,118,26,0.15)", borderRadius: 10, borderWidth: 1, borderColor: "#FE7725", paddingVertical: 12 }}>
-              <Ionicons name="language-outline" size={18} color="#FE7725" />
-              <Text style={{ fontSize: 14, fontWeight: "700", color: "#FE7725" }}>Use in Translator</Text>
+            <Pressable onPress={() => onUseInTranslator(translation || transcript)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: c.orangeDim, borderRadius: 10, borderWidth: 1, borderColor: c.orange, paddingVertical: 12 }}>
+              <Ionicons name="language-outline" size={18} color={c.orange} />
+              <Text style={{ fontSize: 14, fontWeight: "700", color: c.orange }}>Use in Translator</Text>
             </Pressable>
           </View>
         )}
@@ -605,10 +606,10 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
 
       {/* Translate-to picker with "No translation" option */}
       <Modal visible={showTranslatePicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowTranslatePicker(false)}>
-        <View style={{ flex: 1, backgroundColor: "#0A0A0F" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#FFFFFF" }}>Translate To</Text>
-            <Pressable onPress={() => setShowTranslatePicker(false)} style={{ backgroundColor: "#FE7725", paddingHorizontal: 16, paddingVertical: 7, borderRadius: 16 }}>
+        <View style={{ flex: 1, backgroundColor: c.bg }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: c.border }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: c.text }}>Translate To</Text>
+            <Pressable onPress={() => setShowTranslatePicker(false)} style={{ backgroundColor: c.orange, paddingHorizontal: 16, paddingVertical: 7, borderRadius: 16 }}>
               <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Done</Text>
             </Pressable>
           </View>
@@ -617,18 +618,18 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
             keyExtractor={(item) => item.code}
             renderItem={({ item }) => (
               <TouchableOpacity
-                style={[{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }, item.code === translateTo && { backgroundColor: "rgba(232,118,26,0.15)" }]}
+                style={[{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border }, item.code === translateTo && { backgroundColor: c.orangeDim }]}
                 onPress={() => { handleTranslateToChange(item.code); setShowTranslatePicker(false); }}
               >
                 {item.code === "none" ? (
-                  <Ionicons name="remove-circle-outline" size={20} color="rgba(255,255,255,0.45)" />
+                  <Ionicons name="remove-circle-outline" size={20} color={c.textMuted} />
                 ) : (
                   <Text style={{ fontSize: 20 }}>{item.flag}</Text>
                 )}
-                <Text style={[{ flex: 1, fontSize: 15, fontWeight: "500", color: "rgba(255,255,255,0.45)" }, item.code === translateTo && { color: "#FE7725", fontWeight: "700" }]}>
+                <Text style={[{ flex: 1, fontSize: 15, fontWeight: "500", color: c.textMuted }, item.code === translateTo && { color: c.orange, fontWeight: "700" }]}>
                   {item.label}
                 </Text>
-                {item.code === translateTo && <Ionicons name="checkmark" size={18} color="#FE7725" />}
+                {item.code === translateTo && <Ionicons name="checkmark" size={18} color={c.orange} />}
               </TouchableOpacity>
             )}
           />
@@ -648,14 +649,30 @@ export default function AppEntry() {
   const [singleText, setSingleText] = useState("");
   const [myVoice, setMyVoice] = useState<MyVoice | null>(null);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
-  const [disclaimerChecked, setDisclaimerChecked] = useState(false);
+  const [isDark, setIsDark] = useState(true);
+
+  const c = isDark ? DARK : LIGHT;
+  const theme = useMemo(() => ({ c, isDark }), [isDark]);
+
+  const toggleTheme = useCallback(() => {
+    setIsDark(d => {
+      const next = !d;
+      AsyncStorage.setItem("theme_preference", next ? "dark" : "light").catch(() => {});
+      return next;
+    });
+  }, []);
 
   useEffect(() => { getMyVoice().then(setMyVoice); }, []);
   useEffect(() => { if (started) getMyVoice().then(setMyVoice); }, [started]);
   useEffect(() => {
     AsyncStorage.getItem("disclaimer_accepted_v2").then(val => {
-      setDisclaimerChecked(true);
       if (val !== "true") setShowDisclaimer(true);
+    });
+  }, []);
+  // Restore theme preference
+  useEffect(() => {
+    AsyncStorage.getItem("theme_preference").then(val => {
+      if (val === "light") setIsDark(false);
     });
   }, []);
 
@@ -666,7 +683,7 @@ export default function AppEntry() {
 
   if (!started) {
     return (
-      <>
+      <ThemeCtx.Provider value={theme}>
       <SplashScreen
         onTranslate={() => setStarted(true)}
         onTranscribe={() => { setStarted(true); setTranscribeMode(true); }}
@@ -678,7 +695,7 @@ export default function AppEntry() {
             <View style={{ backgroundColor: "#12121A", borderRadius: 16, padding: 24, width: "100%", maxWidth: 360, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" }}>
               <Text style={{ fontSize: 18, fontWeight: "800", color: "#FFFFFF", textAlign: "center", marginBottom: 16 }}>Disclaimer</Text>
               <Text style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", lineHeight: 22, textAlign: "center", marginBottom: 24 }}>
-                Kanjin uses AI-powered voice cloning and translation. By using this app you agree that: recordings are processed securely, cloned voices are for personal use only, and VALT AI Inc. is not responsible for misuse of generated audio.
+                Voice uses AI-powered voice cloning and translation. By using this app you agree that: recordings are processed securely, cloned voices are for personal use only, and VALT AI Inc. is not responsible for misuse of generated audio.
               </Text>
               <Pressable onPress={acceptDisclaimer} style={{ backgroundColor: "#FE7725", borderRadius: 12, paddingVertical: 14, alignItems: "center" }}>
                 <Text style={{ fontSize: 16, fontWeight: "800", color: "#FFFFFF", letterSpacing: 1 }}>I Agree</Text>
@@ -687,30 +704,33 @@ export default function AppEntry() {
           </View>
         </Modal>
       )}
-      </>
+      </ThemeCtx.Provider>
     );
   }
 
   if (myVoiceMode) {
     return (
+      <ThemeCtx.Provider value={theme}>
       <MyVoiceScreen onBack={() => { setStarted(false); setMyVoiceMode(false); getMyVoice().then(setMyVoice); }} />
+      </ThemeCtx.Provider>
     );
   }
 
   if (transcribeMode) {
     return (
+      <ThemeCtx.Provider value={theme}>
       <TranscribeScreen
         onBack={() => { setStarted(false); setTranscribeMode(false); }}
         onUseInTranslator={(text) => { setSingleText(text); setTranscribeMode(false); }}
       />
+      </ThemeCtx.Provider>
     );
   }
 
-  return <HomeScreen singleText={singleText} setSingleText={setSingleText} onBack={() => setStarted(false)} myVoice={myVoice} />;
+  return <HomeScreen singleText={singleText} setSingleText={setSingleText} onBack={() => setStarted(false)} myVoice={myVoice} toggleTheme={toggleTheme} isDark={isDark} />;
 }
 
-function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText: string; setSingleText: (t: string) => void; onBack: () => void; myVoice: MyVoice | null }) {
-  const [isDark, setIsDark] = useState(true);
+function HomeScreen({ singleText, setSingleText, onBack, myVoice, toggleTheme, isDark }: { singleText: string; setSingleText: (t: string) => void; onBack: () => void; myVoice: MyVoice | null; toggleTheme: () => void; isDark: boolean }) {
   const c = isDark ? DARK : LIGHT;
   const theme = useMemo(() => ({ c, isDark }), [isDark]);
 
@@ -831,7 +851,6 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
         setSingleStatus({ msg: "Translating & generating audio...", type: "active" });
         let result: { translation: string; audioUri: string };
         if (curTargetLang === "my-voice" && myVoice?.voiceId) {
-          console.log("[MyVoice] Using cloned voiceId:", myVoice.voiceId, "name:", myVoice.name, "speaking source text directly (multilingual)");
           const overrides = myVoice.settings ? { speed: myVoice.settings.speed, stability: myVoice.settings.stability, style: myVoice.settings.style } : undefined;
           // No targetLanguage → source text goes directly to cloned voice (eleven_multilingual_v2 handles any language)
           result = await translateAndSpeakWithMyVoice(text, curSourceLang, myVoice.voiceId, overrides, undefined);
@@ -849,7 +868,6 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
           Alert.alert("No Voice Cloned", "Please clone your voice first from the main menu.");
           return;
         }
-        if (curSpeakLang === "my-voice") console.log("[MyVoice] Speaking with cloned voiceId:", myVoice!.voiceId, "name:", myVoice!.name);
         // When using My Voice, detect the text's actual language instead of defaulting to English
         const lang = curSpeakLang === "my-voice" ? (detectLanguageFromText(text) ?? "en") : curSpeakLang;
         const overrides: VoiceOverrides = curSpeakLang === "my-voice" && myVoice?.settings
@@ -947,12 +965,12 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
         <View style={{ flex: 1, paddingLeft: 16 }}><Pressable onPress={onBack} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><Ionicons name="arrow-back" size={22} color={c.text} /><Text style={{ color: c.text, fontSize: 15, fontWeight: "600" }}>Back</Text></Pressable></View>
         <View style={{ alignItems: "center" }}>
-          <Text style={{ fontSize: 15, fontWeight: "700", color: c.text }}>Kanjin</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: c.text }}>Voice</Text>
           <Text style={{ fontSize: 10, fontWeight: "500", color: c.text, textTransform: "uppercase", letterSpacing: 1.5, marginTop: 1 }}>powered by</Text>
           <Text style={{ fontSize: 16, fontWeight: "800", color: c.orange, letterSpacing: 1 }}>VALT AI Inc.</Text>
         </View>
         <View style={{ flex: 1, alignItems: "flex-end", paddingRight: 16 }}>
-          <Pressable onPress={() => setIsDark(d => !d)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}>
+          <Pressable onPress={toggleTheme} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}>
             <Ionicons name={isDark ? "sunny" : "moon"} size={16} color={isDark ? "#FFC857" : "#5A5A8A"} />
           </Pressable>
         </View>
@@ -1049,9 +1067,7 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice }: { singleText
               placeholder="Type or paste text here..." placeholderTextColor={c.textDim} maxLength={5000} />
             <Text style={{ textAlign: "right", fontSize: 10, color: c.textDim, marginTop: -6 }}>{singleText.length} / 5000</Text>
 
-            {!(singleStatus.type === "idle" && singleStatus.msg === "Paste text and hit Generate") && (
-              <StatusPill msg={singleStatus.msg} type={singleStatus.type} />
-            )}
+            <StatusPill msg={singleStatus.msg} type={singleStatus.type} />
 
             <Pressable style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: c.orange, borderRadius: 10, paddingVertical: 12 }} onPress={runSingle}>
               <Ionicons name="flash" size={18} color="#fff" />
