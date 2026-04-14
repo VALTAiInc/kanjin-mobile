@@ -70,7 +70,7 @@ async function cleanJapanesePunctuation(text: string): Promise<string> {
   }
 }
 
-/** Clone a voice via ElevenLabs instant voice cloning. */
+/** Clone a voice via Bridge backend (ElevenLabs instant voice cloning). */
 export async function cloneVoice(audioUri: string, name: string): Promise<string> {
   const fileInfo = await FileSystem.getInfoAsync(audioUri);
   if (!fileInfo.exists) throw new Error("Audio file not found");
@@ -80,22 +80,21 @@ export async function cloneVoice(audioUri: string, name: string): Promise<string
   const mimeType = mimeMap[ext] ?? "audio/mp4";
 
   const formData = new FormData();
-  formData.append("name", name);
-  formData.append("files", { uri: audioUri, name: `voice.${ext}`, type: mimeType } as any);
+  formData.append("voiceName", name);
+  formData.append("audio", { uri: audioUri, name: `voice.${ext}`, type: mimeType } as any);
 
-  const response = await fetch("https://api.elevenlabs.io/v1/voices/add", {
+  const response = await fetch(`${API_BASE}/api/clone-voice`, {
     method: "POST",
-    headers: { "xi-api-key": ELEVENLABS_API_KEY },
     body: formData,
   });
 
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
-    throw new Error(`ElevenLabs clone error ${response.status}: ${errBody}`);
+    throw new Error(`Clone error ${response.status}: ${errBody}`);
   }
 
   const data = await response.json();
-  return data.voice_id;
+  return data.voiceId;
 }
 
 /** Translate via Bridge backend + speak with a custom ElevenLabs voice.
