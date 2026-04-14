@@ -861,11 +861,17 @@ function HomeScreen({ singleText, setSingleText, onBack, myVoice, toggleTheme, i
         } else if (curTargetLang === "my-voice" && !myVoice?.voiceId) {
           Alert.alert("No Voice Cloned", "Please clone your voice first from the main menu.");
           return;
+        } else if (curSourceLang === curTargetLang) {
+          setSingleStatus({ msg: "Generating audio...", type: "active" });
+          setSingleTranslation(text);
+          audioUri = await speakText(text, curTargetLang);
         } else {
           result = await translateAndSpeak(text, curSourceLang, curTargetLang);
         }
-        setSingleTranslation(result.translation);
-        audioUri = result.audioUri;
+        if (result) {
+          setSingleTranslation(result.translation);
+          audioUri = result.audioUri;
+        }
       } else {
         setSingleStatus({ msg: "Generating audio...", type: "active" });
         if (curSpeakLang === "my-voice" && !myVoice?.voiceId) {

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View, Text, ScrollView, TextInput, Pressable, ActivityIndicator,
-  KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform, Alert, Modal,
+  KeyboardAvoidingView, Keyboard, Platform, Alert, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -161,7 +161,6 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={{ flex: 1 }}>
             {/* Header */}
             <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
@@ -287,8 +286,8 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
                 {/* Script — inside recording box so it's visible while recording */}
                 <View style={{ width: "100%", height: 1, backgroundColor: c.border }} />
                 <Text style={{ fontSize: 10, color: c.textMuted, alignSelf: "flex-start" }}>Read this aloud while recording</Text>
-                <View style={{ width: "100%", height: 160, backgroundColor: c.surface2, borderRadius: 8, padding: 10 }}>
-                  <ScrollView showsVerticalScrollIndicator nestedScrollEnabled={true}>
+                <View style={{ width: "100%", maxHeight: 200, backgroundColor: c.surface2, borderRadius: 8, padding: 10 }}>
+                  <ScrollView scrollEnabled={true} nestedScrollEnabled={true} showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
                     <Text style={{ fontSize: 13, color: c.text, lineHeight: 20 }} selectable>{voiceName.trim() ? SCRIPT.replace("your name", voiceName.trim()) : SCRIPT}</Text>
                   </ScrollView>
                 </View>
@@ -346,7 +345,6 @@ export default function MyVoiceScreen({ onBack }: { onBack: () => void }) {
 
             </ScrollView>
           </View>
-      </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
       {showIntro && (
         <Modal visible animationType="fade" transparent>
