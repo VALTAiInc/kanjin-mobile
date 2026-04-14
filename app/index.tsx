@@ -344,7 +344,7 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
     }
   }, [sendToTranscribe]);
 
-  const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500 MB
+  const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
 
   const pickVideoAndTranscribe = useCallback(async () => {
     try {
@@ -360,7 +360,7 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
 
       const fileInfo = await FileSystem.getInfoAsync(uri);
       if (fileInfo.exists && (fileInfo as any).size > MAX_VIDEO_SIZE) {
-        showError("Video Too Large", "This video is over 500 MB. Please choose a shorter video or compress it first, then try again.");
+        showError("Video Too Large", "Video is too large for transcription. Please trim it to under 4 minutes or compress it before uploading.");
         return;
       }
 
