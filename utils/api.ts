@@ -4,21 +4,6 @@ const API_BASE = "https://bridge-backend-production-b481.up.railway.app";
 
 const ELEVENLABS_API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY ?? "";
 
-const VOICE_IDS: Record<string, string> = {
-  en: "EXAVITQu4vr4xnSDxMaL", ja: "WQz3clzUdMqvBf0jswZQ",
-  es: "AZnzlk1XvdvUeBnXmlld", fr: "MF3mGyEYCl7XYWbV9V6O",
-  de: "ErXwobaYiN019PkySvjV", pt: "VR6AewLTigWG4xSOukaG",
-  zh: "pNInz6obpgDQGcFmaJgB", ko: "pMsXgVXv3BLzUgSXRplE",
-  ar: "jsCqWAovK2LkecY7zXl4", "ar-LB": "jsCqWAovK2LkecY7zXl4",
-  hi: "ThT5KcBeYPX3keUQqHPh", it: "TxGEqnHWrfWFTfGW9XjX",
-  ru: "yoZ06aMxZJJ28mfd3POQ", nl: "Zlb1dXrM653N07WRdFW3",
-  tr: "g5CIjZEefAph4nQFvHAz", pl: "onwK4e9ZLuTAKqWW03F9",
-  // Placeholder fallbacks until dedicated voice IDs are sourced
-  no: "ErXwobaYiN019PkySvjV",   // Norwegian → German voice fallback
-  tl: "21m00Tcm4TlvDq8ikWAM",   // Filipino → English voice fallback
-  da: "ErXwobaYiN019PkySvjV",   // Danish → German voice fallback
-};
-
 export interface TranslateResult {
   translation: string;
   audioUri: string;
@@ -72,8 +57,14 @@ async function translateText(text: string, sourceLanguage: string, targetLanguag
 /** Prep text for Japanese TTS voice — add natural punctuation for better delivery. */
 async function cleanJapanesePunctuation(text: string): Promise<string> {
   try {
-    const result = await translateText(text, "japanese-tts-prep", "japanese-tts-prep");
-    return result || text;
+    const res = await fetch(`${API_BASE}/api/clean-japanese`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) return text;
+    const data = await res.json();
+    return data.text || text;
   } catch {
     return text;
   }
@@ -170,51 +161,37 @@ export interface VoiceOverrides {
   speed?: number;
 }
 
-/** Speak text as-is via ElevenLabs TTS (no translation). */
+/** Speak text as-is via Bridge backend TTS (no translation). */
 export async function speakText(
   text: string,
   language: string,
   overrides?: VoiceOverrides,
   customVoiceId?: string,
 ): Promise<string> {
-  const voiceId = customVoiceId || VOICE_IDS[language] || VOICE_IDS["en"];
   const isJapanese = language === "ja";
-
   const ttsText = isJapanese ? await cleanJapanesePunctuation(text) : text;
-  const modelId = "eleven_multilingual_v2";
-  const defaults = isJapanese
-    ? { stability: 0.35, similarity_boost: 0.80, style: 0.25, use_speaker_boost: true }
-    : { stability: 0.5, similarity_boost: 1.0, style: 0.2, use_speaker_boost: true, speed: 1.0 };
-  const voiceSettings = overrides
-    ? { ...defaults, ...overrides, use_speaker_boost: true }
-    : defaults;
 
-  const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_192`,
-    {
-      method: "POST",
-      headers: {
-        "xi-api-key": ELEVENLABS_API_KEY,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg",
-      },
-      body: JSON.stringify({
-        text: ttsText,
-        model_id: modelId,
-        voice_settings: voiceSettings,
-      }),
-    }
-  );
+  const response = await fetch(`${API_BASE}/api/speak`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: ttsText,
+      language,
+      voiceSettings: overrides,
+      customVoiceId,
+    }),
+  });
 
-  if (!response.ok) throw new Error(`ElevenLabs error ${response.status}`);
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    throw new Error(`Backend error ${response.status}: ${errBody}`);
+  }
 
-  const arrayBuffer = await response.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
-  let binary = "";
-  for (let i = 0; i < uint8.byteLength; i++) binary += String.fromCharCode(uint8[i]);
-  const base64 = btoa(binary);
+  const data = await response.json();
 
   const fileUri = (FileSystem.cacheDirectory ?? "") + `tts_${Date.now()}.mp3`;
-  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+  await FileSystem.writeAsStringAsync(fileUri, data.audioBase64, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
   return fileUri;
 }
