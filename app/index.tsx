@@ -12,7 +12,6 @@ import { Audio } from "expo-av";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
-import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { COLORS, LANGUAGES } from "../constants/config";
@@ -344,37 +343,6 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
     }
   }, [sendToTranscribe]);
 
-  const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
-
-  const pickVideoAndTranscribe = useCallback(async () => {
-    try {
-      const { status: permStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permStatus !== "granted") { showError("Library Access Needed", "Please allow photo library access in Settings to select videos."); return; }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["videos"],
-        quality: 1,
-      });
-      if (result.canceled || !result.assets?.length) return;
-      const asset = result.assets[0];
-      const uri = asset.uri;
-
-      const fileInfo = await FileSystem.getInfoAsync(uri);
-      if (fileInfo.exists && (fileInfo as any).size > MAX_VIDEO_SIZE) {
-        showError("Video Too Large", "Video is too large for transcription. Please trim it to under 4 minutes or compress it before uploading.");
-        return;
-      }
-
-      const name = uri.split("/").pop() ?? "video.mp4";
-      const ext = name.split(".").pop()?.toLowerCase() ?? "mp4";
-      const mimeMap: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime" };
-      setFileName(name);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await sendToTranscribe(uri, name, mimeMap[ext] ?? "video/mp4");
-    } catch (e: any) {
-      showError("Video Upload Failed", "Could not process the video. Please try a shorter video or a different format (MP4 or MOV).");
-    }
-  }, [sendToTranscribe]);
-
   const transcribeYoutube = useCallback(async () => {
     const url = youtubeUrl.trim();
     if (!url) { showError("No URL", "Please paste a YouTube URL first."); return; }
@@ -506,25 +474,14 @@ function TranscribeScreen({ onBack, onUseInTranslator }: { onBack: () => void; o
             <Ionicons name="cloud-upload-outline" size={18} color={c.textMuted} />
             <Text style={{ fontSize: 13, fontWeight: "600", color: c.textMuted }}>Upload audio file</Text>
           </Pressable>
-          <View style={{ height: 8 }} />
-          <Pressable
-            onPress={pickVideoAndTranscribe}
-            style={({ pressed }) => ({
-              flexDirection: "row", alignItems: "center", gap: 8,
-              paddingHorizontal: 20, paddingVertical: 10,
-              borderRadius: 20, borderWidth: 1,
-              borderColor: pressed ? c.orange : c.border,
-              backgroundColor: pressed ? c.orangeDim : "transparent",
-            })}
-          >
-            <Ionicons name="videocam-outline" size={18} color={c.textMuted} />
-            <Text style={{ fontSize: 13, fontWeight: "600", color: c.textMuted }}>Upload video file</Text>
-          </Pressable>
         </View>
 
         {/* YouTube URL */}
         <View style={{ marginBottom: 16, gap: 6 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>YOUTUBE URL</Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: c.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>YOUTUBE URL</Text>
+            <Text style={{ fontSize: 10, color: c.textDim }}>Videos must have captions enabled</Text>
+          </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TextInput
               style={{ flex: 1, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, color: c.text, fontSize: 13, paddingHorizontal: 10, paddingVertical: 8 }}
